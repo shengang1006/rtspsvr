@@ -194,7 +194,7 @@ int connection::init()
 	}
 	else
 	{
-		printf_t("error : getsockname error %d\n", errno);
+		printf_t("error: getsockname error(%d)\n", errno);
 	}
 	
 	int peerlen = sizeof(peeraddr);
@@ -206,7 +206,7 @@ int connection::init()
 	}
 	else
 	{
-		printf_t("error : getpeername error %d\n", errno);
+		printf_t("error: getpeername error(%d)\n", errno);
 	}
 
 	return ret;
@@ -243,7 +243,7 @@ int connection::disable_writing()
 	}
 	else
 	{
-		printf_t("already disable_writing\n");
+		printf_t("warn : already disable_writing socket(%d)\n", m_fd);
 	}
 	return 0;
 }
@@ -258,7 +258,7 @@ int connection::enable_writing()
 	}
 	else
 	{
-		printf_t("already enable_writing\n");
+		printf_t("warn : already enable_writing socket(%d)\n", m_fd);
 	}
 	return 0;
 }
@@ -288,7 +288,7 @@ int connection::update()
 	
 	if(ret < 0)
 	{
-		printf_t("error : update events error %d socket = %d\n", errno, m_fd);	
+		printf_t("error: update events error %d socket(%d)\n", errno, m_fd);	
 	}
 	return ret;
 }
@@ -305,7 +305,7 @@ int connection::release_ref()
 	auto_lock __lock(m_mutex);
 	m_ref--;
 	if(m_ref < 0){
-		printf_t("error : member leak\n");
+		printf_t("error: member leak\n");
 		return -1;
 	}
 	return 0;
@@ -323,7 +323,7 @@ int connection::set_tcp_no_delay(bool val)
 	int res = setsockopt(m_fd, IPPROTO_TCP, TCP_NODELAY ,(char*) &optVal, sizeof(optVal));
 	if(res < 0)
 	{
-		printf_t("error : set set_tcp_no_delay error %d\n", errno);
+		printf_t("error: set set_tcp_no_delay error(%d)\n", errno);
 	}
 	return res;
 }
@@ -332,7 +332,7 @@ int connection::post_send()
 {
 	if(!m_events)
 	{
-		printf_t("warn: already closed\n");
+		printf_t("warn : post send already closed socket(%d)\n", m_fd);
 		return -1;
 	}
 	
@@ -341,7 +341,7 @@ int connection::post_send()
 	int len = m_send_buf.pos;
 	if(len == 0)
 	{
-		printf_t("debug: post_send no data\n");
+		printf_t("debug: post send no data socket(%d)\n", m_fd);
 		return 0;
 	}
 
@@ -354,7 +354,7 @@ int connection::post_send()
 		{
 			if(errno != EINTR && errno != EAGAIN)
 			{
-				printf_t("error: send error (%d)\n",errno);
+				printf_t("error: post send error(%d) socket(%d)\n", errno, m_fd);
 				return -1;
 			}
 			else
@@ -391,7 +391,7 @@ int connection::post_send(char * data, int len)
 	
 	if(!m_events)
 	{
-		printf_t("warn: already closed\n");
+		printf_t("warn : post_send already closed socket(%d)\n", m_fd);
 		return -1;
 	}
 	
@@ -403,10 +403,10 @@ int connection::post_send(char * data, int len)
 
 	if(pos)
 	{
-		printf_t("has left bytes %d\n", pos + 1);
+		printf_t("debug: has left %d bytes, socket(%d)\n", pos + 1, m_fd);
 		if(pos + len > m_send_buf.len)
 		{
-			printf_t("send buffer overflow \n");
+			printf_t("warn : buffer overflow socket(%d)\n", m_fd);
 			return -1;
 		}
 		else
@@ -427,7 +427,7 @@ int connection::post_send(char * data, int len)
 		{
 			if(errno != EINTR && errno != EAGAIN)
 			{
-				printf_t("error: send error (%d)\n",errno);
+				printf_t("error: post_send error(%d) socket(%d)\n", errno, m_fd);
 				return -1;
 			}
 			else
@@ -435,7 +435,10 @@ int connection::post_send(char * data, int len)
 				//push into send buf
 				memcpy(m_send_buf.buf + m_send_buf.pos, data + total, len - total);
 				m_send_buf.pos += len - total;
-				printf_t("send buffer full total %d/%d %d %s\n", total, len, errno, strerror(errno));
+				
+				printf_t("warn : send buffer full total %d/%d error(%d %s) socket(%d) \n", 
+				total, len, errno, strerror(errno), m_fd);
+				
 				enable_writing();
 				return 0;
 			}		

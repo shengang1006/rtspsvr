@@ -51,7 +51,7 @@ int app::run()
 		}
 		else
 		{
-			printf_t("msg from unknown\n");
+			printf_t("error: msg from unknown app_name(%s)\n", m_name);
 		}
 	
 		free(msg);
@@ -63,7 +63,7 @@ int app::create(int appid, int msg_count, const char * app_name, int app_mode)
 {
 	if(m_ring_buf.create(msg_count) == -1)
 	{
-		printf_t("error : create ring buffer fail\n");
+		printf_t("error: create ring buffer fail\n");
 		return -1;
 	}
 	
@@ -73,7 +73,7 @@ int app::create(int appid, int msg_count, const char * app_name, int app_mode)
 	pthread_t tid;
 	if(create_thread(tid, app_run, m_name, (void*)this) == -1)
 	{
-		printf_t("error : create_thread fail\n");
+		printf_t("error: create_thread fail\n");
 		return -1;
 	}
 	

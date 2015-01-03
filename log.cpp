@@ -74,7 +74,7 @@ int telnet::lg_send(const char * msg, int len)
 		int res = send(m_clientfd, (char*)msg + total_sent, msg_len - total_sent, 0);
 		if(res <= 0)
 		{
-			printf_t("lg_send fail fd = %d, errno = %d\n", m_clientfd, errno);
+			printf_t("error: lg_send fail socket(%d) errno(%d)\n", m_clientfd, errno);
 			return 0;
 		}
 		total_sent += res;
@@ -139,7 +139,7 @@ int telnet::lg_run()
 		int res = epoll_wait (m_epfd, events, 16, -1);	
 		if (res == -1)
 		{
-			printf_t("error: epoll_wait error %d %s\n", errno, strerror(errno));
+			printf_t("error: epoll_wait error(%d %s)\n", errno, strerror(errno));
 			if (errno != EINTR) 
 			{
 				break;
@@ -171,7 +171,7 @@ int telnet::lg_accept()
 {
 	if(m_clientfd != -1)
 	{
-		printf_t("more than one user login\n");
+		printf_t("warn : more than one user login\n");
 		close(m_clientfd);
 		m_clientfd = -1;
 	}
@@ -182,13 +182,13 @@ int telnet::lg_accept()
 	
 	if (m_clientfd == -1)
 	{
-		printf_t("socket accept error %d\n", errno);
+		printf_t("error: socket accept error(%d)\n", errno);
 		return -1;
 	}
 	
 	if(make_no_block(m_clientfd) < 0)
 	{
-		printf_t("make_no_block error %d\n", errno);
+		printf_t("error: make_no_block error(%d)\n", errno);
 		close(m_clientfd);
 		m_clientfd = -1;
 		return -1;
@@ -198,7 +198,7 @@ int telnet::lg_accept()
 	ev.data.fd = m_clientfd;
 	ev.events =  EPOLLIN;
 	if (epoll_ctl (m_epfd, EPOLL_CTL_ADD, m_clientfd, &ev) < 0) {
-		printf_t("EPOLL_CTL_ADD fail %d\n", errno);
+		printf_t("error: EPOLL_CTL_ADD fail(%d)\n", errno);
 		return -1;
 	}
 		
@@ -433,7 +433,7 @@ int telnet::init(const char * prompt, short port)
 	pthread_t tid;
 	if(create_thread(tid, telnet_task, "telnet", this) < 0)
 	{
-		printf_t("error: create thread fail %d\n", errno);
+		printf_t("error: create thread fail(%d)\n", errno);
 		return -1;
 	}
 	return 0;
@@ -624,7 +624,7 @@ int log::write_log(const char * msg, int len)
 {
 	if(!m_file)
 	{
-		printf_t("file is null\n");
+		printf_t("error: file is null\n");
 		return -1;
 	}
 	time_t cur = time(NULL);
@@ -640,7 +640,7 @@ int log::write_log(const char * msg, int len)
 	int ret = fwrite(msg, 1, len, m_file);
 	if(ret < len)
 	{
-		printf_t("write %d/%d bytes errno %d\n", ret, len, errno);
+		printf_t("error: write %d/%d bytes error(%d)\n", ret, len, errno);
 	}
 	
 	if( (m_times++ & 3) == 0)
@@ -693,7 +693,7 @@ int tellog::run()
 		
 		if(!data)
 		{
-			printf_t("fatal error : data is null\n");
+			printf_t("error: data is null\n");
 			continue;
 		}
 		log_header * lh = (log_header*)data;
@@ -753,7 +753,7 @@ int tellog::print(const char * msg, int color)
 	log_header * lh = (log_header*)malloc(tal_len + 1);
 	if(!lh)
 	{
-		printf_t("malloc log fail\n");
+		printf_t("error: malloc log fail\n");
 		return -1;
 	}
 	
@@ -766,7 +766,7 @@ int tellog::print(const char * msg, int color)
 	if(m_ring_buf.push(lh) < 0)
 	{
 		free(lh);
-		printf_t("push log queue fail\n");
+		printf_t("error: push log queue fail\n");
 		return -1;
 	}
 	return 0;

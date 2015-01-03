@@ -54,7 +54,7 @@ ring_buffer::~ring_buffer()
 	
 	if(sem_destroy(&m_hsem) == -1)
 	{
-		printf_t("error :sem_destroy fail %d\n", errno);
+		printf_t("error: sem_destroy error(%d)\n", errno);
 	}
 	m_size = 0;
 	m_read = 0;
@@ -69,7 +69,7 @@ int ring_buffer::create(int size)
 	}
 	if(sem_init(&m_hsem, 0, 0) == -1)
 	{
-		printf_t("error :sem_init fail %d\n", errno);
+		printf_t("error: sem_init error(%d)\n", errno);
 		return -1;
 	}
 	
@@ -131,7 +131,7 @@ int ring_buffer::pop(void *&data, int msecs)
 
 		if(sem_timedwait(&m_hsem, &abstime) == -1)
 		{
-			printf_t("error: sem_timedwait fail %d\n", errno);
+			printf_t("error: sem_timedwait error(%d)\n", errno);
 			return -1;
 		}
 	}
@@ -139,7 +139,7 @@ int ring_buffer::pop(void *&data, int msecs)
 	{
 		if(sem_wait(&m_hsem) == -1)
 		{
-			printf_t("error: sem_wait fail %d\n", errno);
+			printf_t("error: sem_wait error(%d)\n", errno);
 			return -1;
 		}
 	}
@@ -222,12 +222,12 @@ int make_no_block(int fd)
 {
 	int nFlags = fcntl(fd, F_GETFL, 0);
 	if (nFlags < 0){
-		printf_t("error: fcnt getfl error\n");
+		printf_t("error: fcnt getfl error(%d)\n", errno);
 		return -1;
 	}
 	
 	if (fcntl(fd, F_SETFL, nFlags|O_NONBLOCK) < 0){
-		printf_t("error: fcnt setfl error\n");
+		printf_t("error: fcnt setfl error(%d)\n", errno);
 		return -1;
 	}
 	
@@ -247,20 +247,20 @@ int create_tcp_listen(short port, int reuse, int blog)
 	int listenfd = socket(AF_INET, SOCK_STREAM, 0);	
 	if(listenfd < 0)
 	{
-		printf_t("error: create listen socket error\n");
+		printf_t("error: create listen socket error(%d)\n", errno);
 		return -1;
 	}
 	
 	
 	if (make_no_block(listenfd) < 0){
-		printf_t("error: fcnt getfl error\n");
+		printf_t("error: fcnt getfl error(%d)\n", errno);
 		close(listenfd);
 		return -1;
 	}
 	
 	if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
 	{
-		printf_t("error: setsockopt SO_REUSEADDR %d\n", errno);
+		printf_t("error: setsockopt SO_REUSEADDR error(%d)\n", errno);
 		close(listenfd);
 		return -1;
 	}
@@ -274,14 +274,14 @@ int create_tcp_listen(short port, int reuse, int blog)
 	
 	if(bind(listenfd, (const sockaddr*)&sin, sizeof(sin)) < 0)
 	{
-		printf_t("error: socket bind error %d\n", errno);
+		printf_t("error: socket bind error(%d)\n", errno);
 		close(listenfd);
 		return -1;
 	}
 	
 	if(listen(listenfd, blog) < 0)
 	{
-		printf_t("error: listen error %d\n", errno);
+		printf_t("error: listen error(%d)\n", errno);
 		close(listenfd);
 		return -1;
 	}

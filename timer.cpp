@@ -89,7 +89,7 @@ evtime* timer::add(int id, int interval, void* context, int appid)
 
 	if (!m_ppevtime)
 	{
-		printf_t("error: add.realloc memory for evtime\n");
+		printf_t("error: realloc memory for evtime\n");
 		return NULL;
 	}
 
