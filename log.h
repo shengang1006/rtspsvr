@@ -94,6 +94,7 @@ protected:
 	int lg_accept();
 	int lg_recv();
 	int lg_replace(char * last, char * cur);
+	int lg_close();
 	void set_cmd(char * pcmd);
 	char* next_cmd(int mode);
 	int run_cmd(char * pcmd);
@@ -130,6 +131,7 @@ private:
 	int m_max_size;
 	int m_cur_size;
 	struct tm m_log_begin;
+	struct tm m_log_end;
 	int m_times;
 };
 

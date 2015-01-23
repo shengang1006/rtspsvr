@@ -3,6 +3,7 @@
 #include <sys/socket.h> 
 #include <arpa/inet.h>  
 #include <sys/resource.h>
+#include <signal.h> 
 #include "server.h"
 
 server::server(protocol_parser * p)
@@ -15,7 +16,7 @@ server::server(protocol_parser * p)
 	memset(m_apps, 0, sizeof(m_apps));
 	m_parser = p;
 	m_keepalive_timeout = 120;
-	m_log_lev = log_info;
+	m_log_lev = log_debug;
 }
 
 server:: ~server()
@@ -129,10 +130,11 @@ int server::post_msg(int dst, void* ptr, int from, int event, void * content, in
 		return -1;
 	}
 	
-	app_msg* msg = (app_msg*)malloc(sizeof(app_msg) + length);
+	//md by 2015-1-20
+	app_msg* msg = (app_msg*)malloc(sizeof(app_msg) + length + 1);
 	if(!msg)
 	{
-		printf_t("error: malloc %d bytes fail, error(%d)\n", sizeof(app_msg) + length, errno);
+		printf_t("error: malloc %d bytes fail, error(%d)\n", sizeof(app_msg) + length + 1, errno);
 		return -1;
 	}
 
@@ -146,11 +148,13 @@ int server::post_msg(int dst, void* ptr, int from, int event, void * content, in
 	{
 		msg->content = (char*)msg + sizeof(app_msg) ;
 		memcpy(msg->content, content, length);
+		msg->content[length] = 0;	//add by 2015-1-20
 	}
 	else
 	{
 		msg->content = NULL;
 	}
+	
 	if(a->push(msg) < 0)
 	{
 		int total = a->increase_drop_msg();
@@ -245,10 +249,10 @@ int server::check_keepalive(evtime * e)
 		int dis = (int)(cur - m_keepalive_timeout  - n->get_alive_time());
 		if(dis <= 0)
 		{
-			printf_t("debug: check alive_time(%u)\n", n->get_alive_time());
+			//printf_t("debug: check alive_time(%u)\n", n->get_alive_time());
 			break;
 		}
-		printf_t("warn : connection(%d) timeout(%d)\n", n->fd(), dis + m_keepalive_timeout);
+		printf_t("warn : connection(%d) keep timeout(%d)\n", n->fd(), dis + m_keepalive_timeout);
 		
 		//fixed 2014-12-26
 		connection * next =  m_con_list.go_next();
@@ -278,7 +282,7 @@ int server::check_invalid_con(evtime * e)
 			m_con_list.remove(n);
 			delete n;
 			n = next;
-			printf_t("debug: invalid node delete\n");
+			//printf_t("debug: invalid node delete\n");
 		}
 		else{
 			n = m_con_list.go_next();
@@ -502,8 +506,6 @@ int server::handle_accept()
 		n->set_alive_time(cur);
 		m_con_list.push_back(n);
 		post_con_msg(n, ev_accept);
-	//	ipaddr peeraddr = n->get_peeraddr();
-	//	printf_t("new client from %s:%d ,socket %d app %d\n", peeraddr.ip, peeraddr.port, fd, m_last_app);
 	}
 	
 	if(fd < 0)
@@ -514,11 +516,8 @@ int server::handle_accept()
 			return -1;
 		}
 	}
-	
 	return 0;
-	
 }
-
 
 int server::set_keepalive(int timeout)
 {
@@ -602,10 +601,12 @@ int server::log_out(int lev, const char * format, ...)
 			 cur_tm.tm_sec,
 			 str_lev);
     }
+    int nlen = strlen(ach_msg);
+    int nsize = max_log_len - nlen;
 		 	
     va_list pv_list;
     va_start(pv_list, format);	
-    vsprintf(ach_msg + strlen(ach_msg), format, pv_list); 
+    vsnprintf(ach_msg + nlen, nsize, format, pv_list); 
     va_end(pv_list);
 	
 	ach_msg[max_log_len] = 0;
@@ -616,15 +617,33 @@ int server::log_out(int lev, const char * format, ...)
 
 int server::init(short port, int reuse /*= 1*/)
 {
+	//resource limit set 2015-1-23
 	struct rlimit limit;
-	limit.rlim_cur = 10000;
-	limit.rlim_max = 10000;
+	limit.rlim_cur = 60000;
+	limit.rlim_max = 60000;
 	if(setrlimit(RLIMIT_NOFILE, &limit) < 0)
 	{
-		printf_t("error: setrlimit error(%d %s)\n", errno, strerror(errno));
-		//return -1;
+		printf_t("error: setrlimit error(%d)\n", errno);
 	}
 	
+	//ignore socket pipe 2015-1-23
+	struct sigaction sa;
+	sa.sa_handler = SIG_IGN;
+	sa.sa_flags = 0;
+	if(sigemptyset(&sa.sa_mask) == -1 || sigaction(SIGPIPE, &sa, 0) == -1) 
+	{ 
+		printf_t("error: sigaction error(%d)\n", errno);
+	}
+	
+	//ignore thread pipe 2015-1-23
+	sigset_t signal_mask;
+	sigemptyset(&signal_mask);
+	sigaddset(&signal_mask, SIGPIPE);
+	if(pthread_sigmask(SIG_BLOCK, &signal_mask, NULL) < 0)
+	{
+		printf_t("error: pthread_sigmask error(%d)\n", errno);
+	}
+
 	if(m_timer.init(0) < 0)
 	{
 		printf_t("error: timer init fail\n");
@@ -636,8 +655,6 @@ int server::init(short port, int reuse /*= 1*/)
 		printf_t("error: tellog init fail\n");
 		return -1;
 	}
-	
-	m_keepalive_timeout = 120;
 	
 	m_timer.add(ev_timer_active,  500, NULL);
 	m_timer.add(ev_con_keepalive, 30000, NULL);
@@ -662,6 +679,7 @@ int server::init(short port, int reuse /*= 1*/)
 	ev.data.fd = m_listenfd;
 	ev.events =  EPOLLIN | EPOLLET | EPOLLPRI;
 	if (epoll_ctl (m_epfd, EPOLL_CTL_ADD, m_listenfd, &ev) < 0) {
+		printf_t("error: epoll EPOLL_CTL_ADD error(%d)\n", errno);
 		return -1;
 	}
 	return 0;

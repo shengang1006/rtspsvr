@@ -131,7 +131,9 @@ int ring_buffer::pop(void *&data, int msecs)
 
 		if(sem_timedwait(&m_hsem, &abstime) == -1)
 		{
-			printf_t("error: sem_timedwait error(%d)\n", errno);
+      if(errno != ETIMEDOUT){
+          printf_t("error: sem_timedwait error(%d)\n", errno);
+      }
 			return -1;
 		}
 	}
@@ -139,7 +141,9 @@ int ring_buffer::pop(void *&data, int msecs)
 	{
 		if(sem_wait(&m_hsem) == -1)
 		{
-			printf_t("error: sem_wait error(%d)\n", errno);
+      if(errno != ETIMEDOUT){
+          printf_t("error: sem_wait error(%d)\n", errno);
+      }
 			return -1;
 		}
 	}
@@ -147,6 +151,7 @@ int ring_buffer::pop(void *&data, int msecs)
 	data = m_buf[m_read];
 	if(!data)
 	{
+    printf_t("error: fatal error data is null\n");
 		return -1;
 	}
 
@@ -291,7 +296,7 @@ int create_tcp_listen(short port, int reuse, int blog)
 
 int printf_t(const char * format,...)
 {
-	char ach_msg[1024] = {0};
+	char ach_msg[1024 + 1] = {0};
 	
 	time_t cur_t = time(NULL);
     struct tm cur_tm ;
@@ -305,13 +310,16 @@ int printf_t(const char * format,...)
 			 cur_tm.tm_hour,
 			 cur_tm.tm_min, 
 			 cur_tm.tm_sec);
-			 
+		
+		int nlen = strlen(ach_msg);
+    int nsize = 1024 - nlen;
+     
 	va_list pv_list;
     va_start(pv_list, format);	
-    vsprintf(ach_msg + strlen(ach_msg), format, pv_list); 
+    vsnprintf(ach_msg + nlen, nsize, format, pv_list);  
     va_end(pv_list);
 	
-	ach_msg[1024 -1] = 0;
+	ach_msg[1024] = 0;
 	
 	printf(ach_msg);
 	fflush(stdout);

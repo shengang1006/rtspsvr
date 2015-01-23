@@ -35,10 +35,11 @@ telnet::telnet()
 telnet::~telnet()
 {
 	m_brun = false;
-	if(m_epfd >= 0)
+	
+	if(m_clientfd >=0)
 	{
-		close(m_epfd);
-		m_epfd = -1;
+		close(m_clientfd);
+		m_clientfd = -1;
 	}
 	
 	if(m_listenfd >=0)
@@ -47,10 +48,10 @@ telnet::~telnet()
 		m_listenfd = -1;
 	}
 	
-	if(m_clientfd >=0)
+	if(m_epfd >= 0)
 	{
-		close(m_clientfd);
-		m_clientfd = -1;
+		close(m_epfd);
+		m_epfd = -1;
 	}
 }
 
@@ -72,10 +73,11 @@ int telnet::lg_send(const char * msg, int len)
 	while(total_sent  < msg_len)
 	{
 		int res = send(m_clientfd, (char*)msg + total_sent, msg_len - total_sent, 0);
-		if(res <= 0)
+		if(res < 0 && (errno != EINTR && errno != EAGAIN))
 		{
 			printf_t("error: lg_send fail socket(%d) errno(%d)\n", m_clientfd, errno);
-			return 0;
+			lg_close();
+			break;
 		}
 		total_sent += res;
 	}
@@ -94,7 +96,7 @@ int telnet::echo(const char * msg, int color)
 	color = color >= count ? 0 : color;
 	
 	//add color mod
-	char out_buf[1024 * 8] = {0};
+	char out_buf[max_log_len + 512] = {0};
 	strcat(out_buf, color_table[color]);
 	
 	//replace '\n' '\r\n'
@@ -166,14 +168,12 @@ int telnet::lg_run()
 	return 0;
 }
 
-
 int telnet::lg_accept()
 {
 	if(m_clientfd != -1)
 	{
 		printf_t("warn : more than one user login\n");
-		close(m_clientfd);
-		m_clientfd = -1;
+		lg_close();
 	}
 
 	struct sockaddr_in clientaddr;
@@ -218,6 +218,21 @@ int telnet::lg_accept()
 	return 0;
 }
 
+//fixed 2015-1-8
+int telnet::lg_close()
+{
+	if(m_clientfd == -1){
+		return 0;
+	}
+	struct epoll_event ev = {0};
+	ev.data.ptr = (void*)this;
+	epoll_ctl(m_epfd, EPOLL_CTL_DEL, m_clientfd, &ev);
+	close(m_clientfd);
+	m_clientfd = -1;
+	return 0;
+}
+
+
 int telnet::lg_recv()
 {
 	char recv_buf[max_cmd_len] = {0};
@@ -225,8 +240,7 @@ int telnet::lg_recv()
 	int recv_len = recv(m_clientfd, recv_buf, sizeof(recv_buf) -1, 0);
 	if(recv_len <= 0)
 	{
-		close(m_clientfd);
-		m_clientfd = -1;
+		lg_close();
 		return -1;
 	}
 
@@ -521,8 +535,7 @@ int telnet::run_cmd(char * pcmd)
 		
 	if(!strcmp(cmd_name, "bye"))
 	{
-		close(m_clientfd);
-		m_clientfd = -1;
+		lg_close();
 		return 0;
 	}
 	
@@ -586,20 +599,8 @@ int log::open_log()
 	time_t cur = time(NULL);
 	time(&cur);
 	memcpy(&m_log_begin, localtime(&cur), sizeof(m_log_begin));
+	m_log_end = m_log_begin;
 	
-	if(m_file)
-	{		
-		fclose(m_file);
-		char newfilename[256] = {0};
-		int ncopy = strlen(m_filename) - 4;
-		strncpy(newfilename, m_filename, ncopy);
-		sprintf(newfilename + ncopy,"-%02d%02d%02d.log",	
-		 m_log_begin.tm_hour,
-		 m_log_begin.tm_min, 
-		 m_log_begin.tm_sec);
-		rename(m_filename, newfilename);
-	}
-
 	sprintf(m_filename,"%s-%d%02d%02d.log", 
 		m_pathname, 
 		m_log_begin.tm_year+1900, 
@@ -627,23 +628,43 @@ int log::write_log(const char * msg, int len)
 		printf_t("error: file is null\n");
 		return -1;
 	}
+	
 	time_t cur = time(NULL);
 	time(&cur);
 	struct tm tm_cur;
 	memcpy(&tm_cur, localtime(&cur), sizeof(tm_cur));
+
 	if(tm_cur.tm_mday != m_log_begin.tm_mday || m_cur_size >= m_max_size)
 	{
+		fflush(m_file);
+		fclose(m_file);
+		char newfilename[256] = {0};
+		int ncopy = strlen(m_filename) - 4;
+		strncpy(newfilename, m_filename, ncopy);
+		
+		if(tm_cur.tm_mday != m_log_begin.tm_mday){
+			sprintf(newfilename + ncopy,"-%02d%02d%02d.log", 
+			m_log_end.tm_hour, m_log_end.tm_min, m_log_end.tm_sec);
+		}
+		else{
+			sprintf(newfilename + ncopy,"-%02d%02d%02d.log", 
+			tm_cur.tm_hour,tm_cur.tm_min, tm_cur.tm_sec);
+		}
+		rename(m_filename, newfilename);
+		
 		return open_log();
 	}
 	
+	m_log_end = tm_cur;
 	m_cur_size += len;
+	
 	int ret = fwrite(msg, 1, len, m_file);
 	if(ret < len)
 	{
 		printf_t("error: write %d/%d bytes error(%d)\n", ret, len, errno);
 	}
 	
-	if( (m_times++ & 3) == 0)
+	if(((m_times++) & 2) == 0)
 	{
 		fflush(m_file);
 	}
@@ -744,12 +765,13 @@ int tellog::reg_cmd(const char* name, void* func)
 int tellog::print(const char * msg, int color)
 {
 	int msg_len = strlen(msg);
-	int tal_len = msg_len + sizeof(log_header);
-	if(tal_len > max_log_len)
-	{
+	if(msg_len > max_log_len)
+	{	
+		printf_t("error: msg to len(%d)\n", msg_len);
 		return -1;
 	}
 	
+	int tal_len = msg_len + sizeof(log_header);
 	log_header * lh = (log_header*)malloc(tal_len + 1);
 	if(!lh)
 	{

@@ -10,7 +10,7 @@ LIBS    := -lrt -lpthread
 INCLUDE := -I./
 
 #以下是lib路径
-LIBPATH := -L/usr/lib/mysql 
+LIBPATH := -L./
 
 
 #以下是源文件

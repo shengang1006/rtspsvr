@@ -189,7 +189,7 @@ int connection::init()
 	int locallen = sizeof(localaddr);
 	if (getsockname(m_fd, (struct sockaddr *)&localaddr, (socklen_t*)&locallen) == 0)
 	{
-		sprintf(m_peeraddr.ip,"%s", inet_ntoa(localaddr.sin_addr));
+		sprintf(m_localaddr.ip,"%s", inet_ntoa(localaddr.sin_addr));
 		m_localaddr.port = ntohs(localaddr.sin_port);
 	}
 	else
@@ -416,8 +416,6 @@ int connection::post_send(char * data, int len)
 			return 0;
 		}
 	}
-	
-	
 	
 	int total = 0;
 	do
