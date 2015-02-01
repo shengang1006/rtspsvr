@@ -35,7 +35,7 @@ connection::connection(int epfd, int fd)
 	m_events = EPOLLNONE;
 	m_status = kdisconnected;
 	m_operation = knew;
-	m_ref = 1;
+	m_ref = 0;
 	m_alive_time  = 0;
 	m_active_connect = false;
 	memset(&m_send_buf, 0, sizeof(m_send_buf));
@@ -295,26 +295,23 @@ int connection::update()
 
 int connection::add_ref()
 {
-	auto_lock __lock(m_mutex);
-	m_ref++;
+	__sync_fetch_and_add(&m_ref, 1);
 	return 0;
 }
 	
 int connection::release_ref()
 {
-	auto_lock __lock(m_mutex);
-	m_ref--;
-	if(m_ref < 0){
-		printf_t("error: member leak\n");
+	if(__sync_fetch_and_sub(&m_ref, 1) == 0)
+	{
+		printf_t("error: memory leak\n");
 		return -1;
 	}
 	return 0;
 }
 	
-int connection::get_ref()
+bool connection::expired()
 {
-	auto_lock __lock(m_mutex);
-	return m_ref;
+	return __sync_bool_compare_and_swap(&m_ref, 0, 0);
 }
 
 int connection::set_tcp_no_delay(bool val)

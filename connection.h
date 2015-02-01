@@ -46,7 +46,7 @@ public:
 	
 	int release_ref();
 	
-	int get_ref();
+	bool expired();
 	
 	int get_appid();
 		

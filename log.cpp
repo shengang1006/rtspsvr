@@ -96,14 +96,20 @@ int telnet::echo(const char * msg, int color)
 	color = color >= count ? 0 : color;
 	
 	//add color mod
-	char out_buf[max_log_len + 512] = {0};
-	strcat(out_buf, color_table[color]);
+	const int max_line_feed = 64;
+	const int max_color_mode = 16;
+	char out_buf[max_log_len + max_line_feed + 2* max_color_mode] = {0};
+	stpcpy(out_buf, color_table[color]);
 	
 	//replace '\n' '\r\n'
 	char * temp = out_buf +  strlen(color_table[color]);
 	
 	while(*msg)
 	{
+		if(temp - out_buf >= max_log_len + max_line_feed + max_color_mode){
+			break;
+		}
+		
 		*temp = *msg;
 		if (*msg == '\n')
 		{
@@ -115,7 +121,7 @@ int telnet::echo(const char * msg, int color)
 	}
 		
 	//recover color mode
-	strcat(temp, color_table[color_none]);
+	strcpy(temp, color_table[color_none]);
 	
 	int msg_len = temp + strlen(color_table[color_none]) - out_buf + 1;
 	lg_send((char*)out_buf, msg_len);
@@ -335,9 +341,9 @@ int telnet::lg_recv()
 			int len = strlen(m_curcmd);
 			for (int n = 0; n < recv_len ; n++)
 			{
-				if (len + 1 < max_cmd_len)
+				if (len + 1 < max_cmd_len && isprint_char(recv_buf[n]))
 				{
-					m_curcmd[len++] = recv_buf[n]; 
+					m_curcmd[len++] = recv_buf[n];	
 				}
 				else
 				{
@@ -351,6 +357,11 @@ int telnet::lg_recv()
 	}	
 	
 	return 0;
+}
+
+bool telnet::isprint_char(char ch)
+{
+	return (0x20 <= ch && ch <= 0x7e);
 }
 
 int telnet::lg_replace(char * last, char * cur)
@@ -597,15 +608,13 @@ int log::open_log()
 {
 	
 	time_t cur = time(NULL);
-	time(&cur);
-	memcpy(&m_log_begin, localtime(&cur), sizeof(m_log_begin));
-	m_log_end = m_log_begin;
-	
-	sprintf(m_filename,"%s-%d%02d%02d.log", 
-		m_pathname, 
-		m_log_begin.tm_year+1900, 
-		m_log_begin.tm_mon+1,
-		m_log_begin.tm_mday);
+	struct tm tm_cur = *localtime(&cur);
+
+	snprintf(m_filename, sizeof(m_filename),"%s-%d%02d%02d.log", 
+			m_pathname,
+			tm_cur.tm_year+1900, 
+			tm_cur.tm_mon+1,
+			tm_cur.tm_mday);
 		
 	m_file = fopen(m_filename, "a+");
 	
@@ -614,8 +623,10 @@ int log::open_log()
 		return -1;
 	}
 	
+	m_logbegin = tm_cur;
+	m_logend   = tm_cur;
+	
 	fseek(m_file, 0L, SEEK_END);
-	m_cur_size = (int)ftell(m_file);
 	m_times = 0;
 	fprintf(m_file, "************* file log begin ************\n");
 	return 0;
@@ -630,33 +641,7 @@ int log::write_log(const char * msg, int len)
 	}
 	
 	time_t cur = time(NULL);
-	time(&cur);
-	struct tm tm_cur;
-	memcpy(&tm_cur, localtime(&cur), sizeof(tm_cur));
-
-	if(tm_cur.tm_mday != m_log_begin.tm_mday || m_cur_size >= m_max_size)
-	{
-		fflush(m_file);
-		fclose(m_file);
-		char newfilename[256] = {0};
-		int ncopy = strlen(m_filename) - 4;
-		strncpy(newfilename, m_filename, ncopy);
-		
-		if(tm_cur.tm_mday != m_log_begin.tm_mday){
-			sprintf(newfilename + ncopy,"-%02d%02d%02d.log", 
-			m_log_end.tm_hour, m_log_end.tm_min, m_log_end.tm_sec);
-		}
-		else{
-			sprintf(newfilename + ncopy,"-%02d%02d%02d.log", 
-			tm_cur.tm_hour,tm_cur.tm_min, tm_cur.tm_sec);
-		}
-		rename(m_filename, newfilename);
-		
-		return open_log();
-	}
-	
-	m_log_end = tm_cur;
-	m_cur_size += len;
+	struct tm tm_cur = *localtime(&cur);
 	
 	int ret = fwrite(msg, 1, len, m_file);
 	if(ret < len)
@@ -669,6 +654,28 @@ int log::write_log(const char * msg, int len)
 		fflush(m_file);
 	}
 	
+	int cur_size = (int)ftell(m_file);
+	
+	if(cur_size >= m_max_size || m_logbegin.tm_mday != tm_cur.tm_mday)
+	{
+		fclose(m_file);
+		char newfilename[256] = {0};
+		
+		snprintf(newfilename ,sizeof(newfilename),
+				"%s-%d%02d%02d-%02d%02d%02d.log", 
+				m_pathname,
+				m_logbegin.tm_year+1900, 
+				m_logbegin.tm_mon+1,
+				m_logbegin.tm_mday,
+				m_logend.tm_hour,
+				m_logend.tm_min, 
+				m_logend.tm_sec);
+				
+		rename(m_filename, newfilename);
+		return open_log();
+	}
+	
+	m_logend = tm_cur;
 	return 0;
 }
 
@@ -691,8 +698,9 @@ tellog::tellog()
 
 tellog::~tellog()
 {
-	
+	m_brun = false;
 }
+
 void * tellog::tellog_task(void * param)
 {
 	tellog * t = (tellog*)param;
@@ -771,8 +779,8 @@ int tellog::print(const char * msg, int color)
 		return -1;
 	}
 	
-	int tal_len = msg_len + sizeof(log_header);
-	log_header * lh = (log_header*)malloc(tal_len + 1);
+	int total = msg_len + sizeof(log_header);
+	log_header * lh = (log_header*)malloc(total + 1);
 	if(!lh)
 	{
 		printf_t("error: malloc log fail\n");

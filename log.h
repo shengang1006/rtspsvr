@@ -99,6 +99,7 @@ protected:
 	char* next_cmd(int mode);
 	int run_cmd(char * pcmd);
 	static void * telnet_task(void * param);
+	bool isprint_char(char ch);
 
 private:
 	
@@ -129,10 +130,9 @@ private:
 	char m_pathname[256];
 	char m_filename[256];
 	int m_max_size;
-	int m_cur_size;
-	struct tm m_log_begin;
-	struct tm m_log_end;
 	int m_times;
+	struct tm m_logbegin;
+	struct tm m_logend;
 };
 
 class tellog

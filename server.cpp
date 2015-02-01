@@ -55,7 +55,7 @@ int server::run()
 		for(int i = 0; i < res; i++)
 		{
 			//accept
-			if (events[i].data.fd == m_listenfd)
+			if (events[i].data.fd == m_listenfd && m_listenfd >= 0)
 			{	
 				handle_accept();
 				continue;
@@ -269,14 +269,12 @@ int server::check_invalid_con(evtime * e)
 	connection * n = m_con_list.go_first();
 	while(n)
 	{	
-		//printf_t("check_invalid_con : status = %d,active_connect = %d\n",
-		//n->get_status(), n->active_connect());
 		if(n->get_status() != kdisconnected)
 		{
 			break;
 		}
 		
-		if(n->get_status() == kdisconnected && n->get_ref() == 1)
+		if(n->get_status() == kdisconnected && n->expired())
 		{
 			connection * next = m_con_list.go_next();
 			m_con_list.remove(n);
@@ -558,59 +556,57 @@ int server::log_out(int lev, const char * format, ...)
 		return 0;
 	}
 	
-	char ach_msg[max_log_len + 1] = {0};
+	char ach_msg[max_log_len] = {0};
 	
 	time_t cur_t = time(NULL);
-    struct tm cur_tm ;
-	memcpy(&cur_tm, localtime(&cur_t), sizeof(cur_tm));
+    struct tm cur_tm = *localtime(&cur_t);
 	
-	int color = color_green;
-	char str_lev[16] = {0};
-	switch(lev)
-	{	
-		case log_error: 
-			color = color_red;
-			strcat(str_lev, "[error]");
-		break;
-		case log_warn : 
-			color = color_yellow; 
-			strcat(str_lev, "[warn]");
-		break;
-		case log_debug: 
-			color = color_green;
-			strcat(str_lev, "[debug]");
-		break;
-		case log_info:
-			color = color_white;
-			strcat(str_lev, "[info]");
-		break;
-		default:
-			color = color_purple;
-		break;
-	}
-
 	if(lev != log_none)
 	{
 		sprintf(ach_msg, 
-			"[%d-%02d-%02d %02d:%02d:%02d]%s",
+			"[%d-%02d-%02d %02d:%02d:%02d]",
 			 cur_tm.tm_year + 1900, 
 			 cur_tm.tm_mon + 1,
 			 cur_tm.tm_mday,
 			 cur_tm.tm_hour,
 			 cur_tm.tm_min, 
-			 cur_tm.tm_sec,
-			 str_lev);
+			 cur_tm.tm_sec);
     }
-    int nlen = strlen(ach_msg);
-    int nsize = max_log_len - nlen;
+	
+	char * pos = ach_msg + strlen(ach_msg);
+	
+	int color = color_green;
+	switch(lev)
+	{	
+		case log_error: 
+			color = color_red;
+			strcpy(pos, "[error]");
+		break;
+		case log_warn : 
+			color = color_yellow; 
+			strcpy(pos, "[warn]");
+		break;
+		case log_debug: 
+			color = color_green;
+			strcpy(pos, "[debug]");
+		break;
+		case log_info:
+			color = color_white;
+			strcpy(pos, "[info]");
+		break;
+		default:
+			color = color_purple;
+		break;
+	}
+	pos += strlen(pos);
+	
+    int nsize = max_log_len - (int)(pos - ach_msg);
 		 	
     va_list pv_list;
     va_start(pv_list, format);	
-    vsnprintf(ach_msg + nlen, nsize, format, pv_list); 
+    vsnprintf(pos, nsize, format, pv_list); 
     va_end(pv_list);
 	
-	ach_msg[max_log_len] = 0;
-
 	return m_tellog.print(ach_msg, color);
 }
 
@@ -644,22 +640,26 @@ int server::init(short port, int reuse /*= 1*/)
 		printf_t("error: pthread_sigmask error(%d)\n", errno);
 	}
 
+	//init timer
 	if(m_timer.init(0) < 0)
 	{
 		printf_t("error: timer init fail\n");
 		return -1;
 	}
 	
+	//init log module
 	if(m_tellog.init() < 0)
 	{
 		printf_t("error: tellog init fail\n");
 		return -1;
 	}
 	
+	//add system timer event
 	m_timer.add(ev_timer_active,  500, NULL);
 	m_timer.add(ev_con_keepalive, 30000, NULL);
 	m_timer.add(ev_con_clear, 5000, NULL);
 
+	//create epoll
 	m_epfd = epoll_create (32000);
 	if (m_epfd < 0) 
 	{
@@ -667,6 +667,13 @@ int server::init(short port, int reuse /*= 1*/)
 		return -1;
 	}
 	
+	//check weather if need create tcp listen
+	if(port <= 0){
+		printf_t("warn: port <= 0, not create listen socket\n");
+		return 0;
+	}
+	
+	//create tcp listen socket
 	m_listenfd = create_tcp_listen(port, reuse, SOMAXCONN);
 	if(m_listenfd < 0)
 	{
@@ -689,7 +696,7 @@ int server::init(short port, int reuse /*= 1*/)
 int server::loop()
 {
 	prctl(PR_SET_NAME, "epoll");
-	if(!m_app_num || m_listenfd == -1)
+	if(!m_app_num)
 	{
 		return -1;
 	}

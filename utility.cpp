@@ -296,12 +296,13 @@ int create_tcp_listen(short port, int reuse, int blog)
 
 int printf_t(const char * format,...)
 {
-	char ach_msg[1024 + 1] = {0};
+	const int printf_max = 1024;
+	
+	char ach_msg[printf_max] = {0};
 	
 	time_t cur_t = time(NULL);
-    struct tm cur_tm ;
-	memcpy(&cur_tm, localtime(&cur_t), sizeof(cur_tm));
-	
+    struct tm cur_tm = *localtime(&cur_t) ;
+
 	sprintf(ach_msg, 
 			"%d-%02d-%02d %02d:%02d:%02d ",
 			 cur_tm.tm_year + 1900, 
@@ -311,16 +312,14 @@ int printf_t(const char * format,...)
 			 cur_tm.tm_min, 
 			 cur_tm.tm_sec);
 		
-		int nlen = strlen(ach_msg);
-    int nsize = 1024 - nlen;
+	int nlen = strlen(ach_msg);
+    int nsize = printf_max - nlen;
      
 	va_list pv_list;
     va_start(pv_list, format);	
     vsnprintf(ach_msg + nlen, nsize, format, pv_list);  
     va_end(pv_list);
-	
-	ach_msg[1024] = 0;
-	
+		
 	printf(ach_msg);
 	fflush(stdout);
 	
