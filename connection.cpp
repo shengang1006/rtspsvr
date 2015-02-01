@@ -24,6 +24,13 @@ void release_packet_buf(packet_buf & s)
 	s.len = 0;
 }
 
+void inet_ntoa_convert(ipaddr & dst, struct sockaddr_in & addr)
+{
+	unsigned char *p = (unsigned char*)&addr.sin_addr;
+	sprintf(dst.ip,"%d.%d.%d.%d", p[0], p[1], p[2], p[3]);
+	dst.port = ntohs(addr.sin_port);
+}
+
 
 connection::connection(int epfd, int fd)
 {
@@ -189,8 +196,7 @@ int connection::init()
 	int locallen = sizeof(localaddr);
 	if (getsockname(m_fd, (struct sockaddr *)&localaddr, (socklen_t*)&locallen) == 0)
 	{
-		sprintf(m_localaddr.ip,"%s", inet_ntoa(localaddr.sin_addr));
-		m_localaddr.port = ntohs(localaddr.sin_port);
+		inet_ntoa_convert(m_localaddr, localaddr);
 	}
 	else
 	{
@@ -200,9 +206,7 @@ int connection::init()
 	int peerlen = sizeof(peeraddr);
 	if (getpeername(m_fd, (struct sockaddr *)&peeraddr, (socklen_t*)&peerlen) == 0)
 	{	
-		sprintf(m_peeraddr.ip,"%s", inet_ntoa(peeraddr.sin_addr));
-		m_peeraddr.port = ntohs(peeraddr.sin_port);
-		
+		inet_ntoa_convert(m_peeraddr, peeraddr);		
 	}
 	else
 	{
