@@ -727,7 +727,7 @@ int server::register_app(app * a, int msg_count, const char * name,  int app_mod
 	
 	m_apps[m_app_num] = a;
 
-	return m_app_num++;
+	return  m_app_num++;
 }
 
 int server::post_connect(const char * ip, short port, int delay, int appid ,void * context)
@@ -752,10 +752,8 @@ int server::post_connect(const char * ip, short port, int delay, int appid ,void
 		return -1;
 	}
 	
-	ipaddr peeraddr;
-	memset(&peeraddr, 0, sizeof(peeraddr));
-	strncpy(peeraddr.ip, ip, sizeof(peeraddr.ip));
-	peeraddr.port = port;
+	ipaddr peeraddr = {{0}, port};
+	strncpy(peeraddr.ip, ip, sizeof(peeraddr.ip) - 1);
 	
 	connection * n = new connection(m_epfd, fd);
 	n->set_active_connect(true);
