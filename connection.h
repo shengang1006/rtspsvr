@@ -33,9 +33,7 @@ public:
 	ipaddr & get_localaddr();
 	
 	int set_localaddr(ipaddr & addr);
-	
-	bool active_connect();
-	
+
 	int set_context(void * context);
 	
 	void* get_context();
@@ -54,9 +52,9 @@ public:
 		
 protected:
 
-	uint get_alive_time();
+	time_t get_alive_time();
 	
-	int set_alive_time(uint tick);
+	int set_alive_time(time_t tick);
 
 	int get_status();
 	
@@ -69,8 +67,6 @@ protected:
 	packet_buf * get_recv_buf();
 	
 	int post_send();
-	
-	int set_active_connect(bool val);
 	
 	friend class server;
 	friend class con_list;
@@ -101,7 +97,6 @@ protected:
 	int m_operation;
 	int m_status;
 	int m_ref;
-	bool m_active_connect;
 	
-	uint m_alive_time;
+	time_t m_alive_time;
 };

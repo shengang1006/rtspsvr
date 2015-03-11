@@ -7,11 +7,17 @@
 
 
 
-void init_packet_buf(packet_buf & s,int size)
+int init_packet_buf(packet_buf & s,int size)
 {
+	if(!s.buf){
 	s.buf = (char*)malloc(size);
 	s.pos = 0;
 	s.len = size;
+	}
+	if(!s.buf){
+		return -1;
+	}
+	return 0;
 }
 
 void release_packet_buf(packet_buf & s)
@@ -44,7 +50,6 @@ connection::connection(int epfd, int fd)
 	m_operation = knew;
 	m_ref = 0;
 	m_alive_time  = 0;
-	m_active_connect = false;
 	memset(&m_send_buf, 0, sizeof(m_send_buf));
 	memset(&m_recv_buf, 0, sizeof(m_recv_buf));
 	memset(&m_localaddr,0, sizeof(m_localaddr));
@@ -112,17 +117,6 @@ int connection::set_appid(int appid)
 	return 0;
 }
 	
-bool connection::active_connect()
-{
-	return m_active_connect;
-}
-
-int connection::set_active_connect(bool val)
-{
-	m_active_connect = val;
-	return 0;
-}
-
 int connection::set_context(void * context)
 {
 	m_context = context;
@@ -170,12 +164,12 @@ void * connection::get_inner_context()
 	return m_inner_context;
 }
 	
-uint connection::get_alive_time()
+time_t connection::get_alive_time()
 {
 	return m_alive_time;
 }
 
-int connection::set_alive_time(uint tick)
+int connection::set_alive_time(time_t tick)
 {
 	m_alive_time = tick;
 	return 0;
@@ -188,7 +182,7 @@ int connection::init()
 		
 	if(!ret)
 	{
-		init_packet_buf(m_send_buf, send_buf_len);
+		//init_packet_buf(m_send_buf, send_buf_len);
 		init_packet_buf(m_recv_buf, recv_buf_len);
 	}
 	
@@ -432,6 +426,10 @@ int connection::post_send(char * data, int len)
 			else
 			{
 				//push into send buf
+				if(init_packet_buf(m_send_buf, send_buf_len) < 0){
+					printf_t("error: post_send init_packet_buf error(%d)\n", errno);
+					return -1;
+				}
 				memcpy(m_send_buf.buf + m_send_buf.pos, data + total, len - total);
 				m_send_buf.pos += len - total;
 				

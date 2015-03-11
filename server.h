@@ -6,20 +6,18 @@
 
 #define max_app_num     16
 
-class protocol_parser
-{
-public:
-	//失败-1，成功返回包长
-	virtual int get_packet(char * data, int len, char *&packet) = 0;
-};
-
 /*
 */
 
 class server
 {
+private:
+	server();
+	server(const server &);  
+    server & operator = (const server &); 
+	
 public:
-	server(protocol_parser * p);
+	static server * instance();
 	
 	virtual ~server();
 	
@@ -33,7 +31,7 @@ public:
 	
 	int reg_cmd(const char* name, void* func);
 	
-	int log_out(int lev, const char * format,...);
+	int log_out(int lev, int color, const char * text);
 	
 	int set_loglev(int lev);
 	
@@ -50,6 +48,10 @@ public:
 	int post_app_msg(int dst, int event, void * content = NULL, int length = 0, int src = -1);
 		
 	int stop();
+	
+	int create_udp_server(int port, int reuse = 1);
+	
+	int create_udp_client(const char * ip, short port);
 	
 protected:
 	
@@ -83,7 +85,7 @@ protected:
 private:
 	int m_epfd;
 	int m_listenfd;
-	protocol_parser * m_parser;
+	int m_listen_udpfd;
 	app * m_apps[max_app_num];
 	int m_app_num;
 	int m_last_app;

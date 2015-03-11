@@ -6,24 +6,29 @@
 #include <signal.h> 
 #include "server.h"
 
-server::server(protocol_parser * p)
+server::server()
 {
 	m_epfd = -1;
 	m_listenfd  = -1;
-	m_parser = NULL;
+	m_listen_udpfd = -1;
 	m_app_num = 0;
 	m_last_app = -1;
 	memset(m_apps, 0, sizeof(m_apps));
-	m_parser = p;
 	m_keepalive_timeout = 120;
 	m_log_lev = log_debug;
 }
+
 
 server:: ~server()
 {
 	stop();
 }
-	
+
+server * server::instance(){
+	static server inst;
+	return &inst;
+}
+
 int server::run()
 {
 	int event_num = 1024 * 8;
@@ -50,7 +55,7 @@ int server::run()
 			continue;
 		}
 		
-		uint cur = (uint)time(NULL);
+		time_t cur = time(NULL);
 				
 		for(int i = 0; i < res; i++)
 		{
@@ -196,8 +201,22 @@ int server::packet_dispatch(connection * n)
 	int packet_len = 0;	
 	int offset = 0;
 	
-	while((packet_len = m_parser->get_packet(p_buf->buf + offset, p_buf->pos , packet)) >0)
+	int dst = n->get_appid();
+	if(dst < 0 || dst >= m_app_num){
+	}
+	
+	app * a = m_apps[dst];
+	if(!a){
+		return -1;
+	}
+	
+	for(;;)
 	{
+		packet_len = a->on_unpack(p_buf->buf + offset, p_buf->pos , packet);
+		if(packet_len <=0 ){
+			break;
+		}
+		
 		p_buf->pos -= packet_len;
 		offset += packet_len;
 
@@ -236,11 +255,11 @@ int server::packet_dispatch(connection * n)
 
 int server::check_keepalive(evtime * e)
 {
-	uint cur = (uint)time(NULL);
+	time_t cur = time(NULL);
 	connection * n = m_con_list.go_first();
 	while(n)
 	{
-		if(n->get_status() != kconnected || n->active_connect())
+		if(n->get_status() != kconnected)
 		{	
 			n = m_con_list.go_next();
 			continue;
@@ -323,9 +342,8 @@ int server::start_connect(evtime * e)
 	}
 	else
 	{
-		uint cur = (uint)time(NULL);
 		n->set_status(kconnected);
-		n->set_alive_time(cur);
+		n->set_alive_time(time(NULL));
 		m_con_list.push_back(n);			
 		post_con_msg(n, ev_connect_ok);
 	}
@@ -425,8 +443,7 @@ int server::handle_connect(connection * n)
 		return -1;
 	}
 	
-	uint cur = (uint)time(NULL);
-	n->set_alive_time(cur);
+	n->set_alive_time(time(NULL));
 	n->set_status(kconnected);		
 	m_con_list.move_to_back(n);
 	post_con_msg(n, ev_connect_ok);
@@ -475,7 +492,7 @@ int server::handle_accept()
 	struct sockaddr_in peeraddr; 
 	int addrlen = sizeof(peeraddr); 
 	int listenfd = m_listenfd;
-	uint cur = (uint)time(NULL);
+	time_t cur = time(NULL);
 	while((fd = accept(listenfd, (struct sockaddr *)&peeraddr, (socklen_t*)&addrlen)) >= 0)
 	{	
 			
@@ -500,20 +517,18 @@ int server::handle_accept()
 		connection * n = new connection(m_epfd, fd);
 		n->set_appid(get_shared_app());
 		n->set_status(kconnected);
-		n->set_active_connect(false);
 		n->set_alive_time(cur);
 		m_con_list.push_back(n);
 		post_con_msg(n, ev_accept);
 	}
 	
-	if(fd < 0)
+	
+	if (errno != EAGAIN && errno != ECONNABORTED && errno != EPROTO && errno != EINTR)
 	{
-		if (errno != EAGAIN && errno != ECONNABORTED && errno != EPROTO && errno != EINTR)
-		{
-			printf_t("error: net_accept.accept error\n");
-			return -1;
-		}
+		printf_t("error: net_accept.accept error\n");
+		return -1;
 	}
+	
 	return 0;
 }
 
@@ -549,65 +564,9 @@ int server::get_loglev()
 	return m_log_lev;
 }
 
-int server::log_out(int lev, const char * format, ...)
+int server::log_out(int lev, int color, const char * text)
 {
-	if(lev < m_log_lev)
-	{
-		return 0;
-	}
-	
-	char ach_msg[max_log_len] = {0};
-	
-	time_t cur_t = time(NULL);
-    struct tm cur_tm = *localtime(&cur_t);
-	
-	if(lev != log_none)
-	{
-		sprintf(ach_msg, 
-			"[%d-%02d-%02d %02d:%02d:%02d]",
-			 cur_tm.tm_year + 1900, 
-			 cur_tm.tm_mon + 1,
-			 cur_tm.tm_mday,
-			 cur_tm.tm_hour,
-			 cur_tm.tm_min, 
-			 cur_tm.tm_sec);
-    }
-	
-	char * pos = ach_msg + strlen(ach_msg);
-	
-	int color = color_green;
-	switch(lev)
-	{	
-		case log_error: 
-			color = color_red;
-			strcpy(pos, "[error]");
-		break;
-		case log_warn : 
-			color = color_yellow; 
-			strcpy(pos, "[warn]");
-		break;
-		case log_debug: 
-			color = color_green;
-			strcpy(pos, "[debug]");
-		break;
-		case log_info:
-			color = color_white;
-			strcpy(pos, "[info]");
-		break;
-		default:
-			color = color_purple;
-		break;
-	}
-	pos += strlen(pos);
-	
-    int nsize = max_log_len - (int)(pos - ach_msg);
-		 	
-    va_list pv_list;
-    va_start(pv_list, format);	
-    vsnprintf(pos, nsize, format, pv_list); 
-    va_end(pv_list);
-	
-	return m_tellog.print(ach_msg, color);
+	return m_tellog.print(text, color);
 }
 
 
@@ -756,7 +715,6 @@ int server::post_connect(const char * ip, short port, int delay, int appid ,void
 	strncpy(peeraddr.ip, ip, sizeof(peeraddr.ip) - 1);
 	
 	connection * n = new connection(m_epfd, fd);
-	n->set_active_connect(true);
 	n->set_peeraddr(peeraddr);
 	n->set_context(context);
 	n->set_appid(appid);
@@ -784,10 +742,10 @@ int server::stop()
 		m_listenfd = -1;
 	}
 	
-	if(m_parser)
+	if(m_listen_udpfd >= 0)
 	{
-		delete m_parser;
-		m_parser = NULL;
+		close(m_listen_udpfd);
+		m_listen_udpfd = -1;
 	}
 	
 	m_timer.release();
@@ -798,6 +756,76 @@ int server::stop()
 	}
 	m_app_num = 0;
 
+	return 0;
+}
+
+int server::create_udp_server(int port, int reuse /*= 1*/)
+{
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if(fd < 0){
+		return -1;
+	}
+	
+	if (make_no_block(fd) < 0){
+		printf_t("error: fcnt getfl error(%d)\n", errno);
+		close(fd);
+		return -1;
+	}
+	
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
+	{
+		printf_t("error: setsockopt SO_REUSEADDR error(%d)\n", errno);
+		close(fd);
+		return -1;
+	}
+	
+	// bind & listen    
+	sockaddr_in sin ;         
+	memset(&sin, 0, sizeof(struct sockaddr_in));
+	sin.sin_family = AF_INET;
+	sin.sin_port = htons(port);
+	sin.sin_addr.s_addr = INADDR_ANY;
+	
+	if(bind(fd, (const sockaddr*)&sin, sizeof(sin)) < 0)
+	{
+		printf_t("error: socket bind error(%d)\n", errno);
+		close(fd);
+		return -1;
+	}
+	
+	//add listen fd
+	struct epoll_event ev;
+	ev.data.fd = fd;
+	ev.events =  EPOLLIN | EPOLLET | EPOLLPRI;
+	if (epoll_ctl (m_epfd, EPOLL_CTL_ADD, fd, &ev) < 0) {
+		printf_t("error: epoll EPOLL_CTL_ADD error(%d)\n", errno);
+		return -1;
+	}
+	
+	m_listen_udpfd = fd;
+	
+	return 0;
+}
+	
+int server::create_udp_client(const char * ip, short port)
+{
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if(fd < 0){
+		return -1;
+	}
+	
+	if (make_no_block(fd) < 0){
+		printf_t("error: fcnt getfl error(%d)\n", errno);
+		close(fd);
+		return -1;
+	}
+	
+	sockaddr_in sin ;         
+	memset(&sin, 0, sizeof(struct sockaddr_in));
+	sin.sin_family = AF_INET;
+	sin.sin_port = htons(port);
+	sin.sin_addr.s_addr = inet_addr(ip);
+	
 	return 0;
 }
 

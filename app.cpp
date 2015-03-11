@@ -1,4 +1,6 @@
 #include "app.h"
+#include "server.h"
+#include "stdio.h"
 /*app class*/
 
 app::app()
@@ -121,5 +123,78 @@ const char * app::name()
 	return m_name;
 }
 
+int app::add_timer(int id, int interval, void * context)
+{
+	return server::instance()->add_timer(id, interval, m_appid, context);
+}
 
+int app::post_connect(const char * ip, short port, int delay, void * context)
+{
+	return server::instance()->post_connect(ip, port, delay, m_appid, context);
+}
+	
+int app::post_app_msg(int dst, int event, void * content, int length, int src)
+{
+	return server::instance()->post_app_msg(dst, event, content, length, src);
+}
+
+int app::log_out(int lev, const char * format,...)
+{
+	if(lev < server::instance()->get_loglev()){
+		return 0;
+	}
+	
+	char ach_msg[max_log_len] = {0};
+	
+	time_t cur_t = time(NULL);
+    struct tm cur_tm = *localtime(&cur_t);
+	
+	if(lev != log_none)
+	{
+		sprintf(ach_msg, 
+			"[%d-%02d-%02d %02d:%02d:%02d]",
+			 cur_tm.tm_year + 1900, 
+			 cur_tm.tm_mon + 1,
+			 cur_tm.tm_mday,
+			 cur_tm.tm_hour,
+			 cur_tm.tm_min, 
+			 cur_tm.tm_sec);
+    }
+	
+	char * pos = ach_msg + strlen(ach_msg);
+	
+	int color = color_green;
+	switch(lev)
+	{	
+		case log_error: 
+			color = color_red;
+			strcpy(pos, "[error]");
+		break;
+		case log_warn : 
+			color = color_yellow; 
+			strcpy(pos, "[warn]");
+		break;
+		case log_debug: 
+			color = color_green;
+			strcpy(pos, "[debug]");
+		break;
+		case log_info:
+			color = color_white;
+			strcpy(pos, "[info]");
+		break;
+		default:
+			color = color_purple;
+		break;
+	}
+	pos += strlen(pos);
+	
+    int nsize = max_log_len - (int)(pos - ach_msg);
+		 	
+    va_list pv_list;
+    va_start(pv_list, format);	
+    vsnprintf(pos, nsize, format, pv_list); 
+    va_end(pv_list);
+	
+	return server::instance()->log_out(lev, color, ach_msg);
+}
 
