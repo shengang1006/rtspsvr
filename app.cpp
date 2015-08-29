@@ -106,7 +106,7 @@ int app::get_appid()
 
 int  app::push(const hd_app & temp)
 {
-	//md by 2015-1-20
+	
 	hd_app * msg = (hd_app*)malloc(sizeof(hd_app) + temp.length + 1);
 	if(!msg){
 		printf_t("error: malloc %d bytes fail, error(%d)\n", sizeof(hd_app) + temp.length + 1, errno);
@@ -117,7 +117,7 @@ int  app::push(const hd_app & temp)
 	if(temp.length){
 		msg->content = (char*)msg + sizeof(hd_app) ;
 		memcpy(msg->content, temp.content, temp.length);
-		msg->content[temp.length] = 0;	//add by 2015-1-20
+		msg->content[temp.length] = 0;	
 	}
 	
 	if(msg->type == tcp_type){
@@ -128,6 +128,7 @@ int  app::push(const hd_app & temp)
 		if(msg->type == tcp_type){
 			msg->u.tcp.n->release_ref();
 		}
+    free(msg);
 		printf_t("error: drop msg count(%d)\n", ++m_drop_msg);
 		return -1;
 	}
