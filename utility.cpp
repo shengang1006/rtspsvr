@@ -1,7 +1,7 @@
 #include "utility.h"
 #include <unistd.h>
 #include <fcntl.h>
-
+#include<sys/stat.h>
 
 /********************************************************/
 auto_mutex::auto_mutex()
@@ -90,18 +90,19 @@ int ring_buffer::push(void* data)
 		return -1;
 	}
 	
-	auto_lock __lock(m_w_mutex);
-	if(m_buf[m_write])
 	{
-		return -1;
+		auto_lock __lock(m_w_mutex);
+		if(m_buf[m_write])
+		{
+			return -1;
+		}
+		m_buf[m_write] = data;
+			
+		if(++m_write == m_size)
+		{
+			m_write = 0;
+		}
 	}
-	m_buf[m_write] = data;
-		
-	if(++m_write == m_size)
-	{
-		m_write = 0;
-	}
-
 	sem_post(&m_hsem);
 	
 	return 0;
@@ -109,11 +110,8 @@ int ring_buffer::push(void* data)
 
 int ring_buffer::pop(void *&data, int msecs)
 {
-	if(!m_size)
-	{
-		return -1;
-	}
 	
+	int ret = 0;
 	if(msecs >= 0)
 	{
 		struct timeval now;
@@ -129,29 +127,33 @@ int ring_buffer::pop(void *&data, int msecs)
 			abstime.tv_nsec -= BILLION;
 		}
 
-		if(sem_timedwait(&m_hsem, &abstime) == -1)
-		{
-      if(errno != ETIMEDOUT){
-          printf_t("error: sem_timedwait error(%d)\n", errno);
-      }
-			return -1;
-		}
+		while ((ret = sem_timedwait(&m_hsem, &abstime)) < 0 && errno == EINTR)
+			continue;
 	}
-	else
+	else{
+
+		while ((ret = sem_wait(&m_hsem)) < 0 && errno == EINTR)
+			continue;
+	}
+	
+				
+	if(ret < 0){
+		if(errno != ETIMEDOUT){
+			printf_t("sem_timedwait/sem_wait error(%d)\n", errno);
+		}	
+		return -1;
+	}
+
+	
+	if(!m_size)
 	{
-		if(sem_wait(&m_hsem) == -1)
-		{
-      if(errno != ETIMEDOUT){
-          printf_t("error: sem_wait error(%d)\n", errno);
-      }
-			return -1;
-		}
+		return -1;
 	}
 	
 	data = m_buf[m_read];
 	if(!data)
 	{
-    printf_t("error: fatal error data is null\n");
+		printf_t("error: fatal error data is null\n");
 		return -1;
 	}
 
@@ -172,7 +174,7 @@ int ring_buffer::pop(void *&data, int msecs)
 struct thread_template{
 	thread_fun fun;
 	void * param;
-	char  name[max_app_name + 1];
+	char  name[max_app_name];
 };
 
 
@@ -222,6 +224,35 @@ int create_thread(pthread_t & tid, thread_fun fun, const char * name, void * par
 	
 }
 
+int create_directory(const char * path, int amode /*= 777*/){
+
+	int len = strlen(path);
+	if(len == 0 || len >= 512){
+		return -1;
+	}
+
+	char dirname[512] = {0};
+	strcpy(dirname, path);
+	if(dirname[len -1] != '/'){
+		dirname[len++] = '/' ;
+	}
+
+
+	for (int i = 1; i < len; i++){
+		if(dirname[i] == '/'){
+			dirname[i] = 0;
+			if (access(dirname, 0)){
+				if (mkdir(dirname, amode) < 0){
+					printf_t("mkdir error(%d)\n", errno);
+					return -1;
+				}
+			}
+			dirname[i] = '/';
+		}
+	}
+
+	return 0;
+}
 
 int make_no_block(int fd)
 {
@@ -246,62 +277,15 @@ int64 get_tick_count()
 	return ((int64)tv.tv_sec * 1000) + tv.tv_usec/1000;
 }
 
-
-int create_tcp_listen(short port, int reuse, int blog)
-{
-	int listenfd = socket(AF_INET, SOCK_STREAM, 0);	
-	if(listenfd < 0)
-	{
-		printf_t("error: create listen socket error(%d)\n", errno);
-		return -1;
-	}
-	
-	
-	if (make_no_block(listenfd) < 0){
-		printf_t("error: fcnt getfl error(%d)\n", errno);
-		close(listenfd);
-		return -1;
-	}
-	
-	if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
-	{
-		printf_t("error: setsockopt SO_REUSEADDR error(%d)\n", errno);
-		close(listenfd);
-		return -1;
-	}
-	
-	// bind & listen    
-	sockaddr_in sin ;         
-	memset(&sin, 0, sizeof(struct sockaddr_in));
-	sin.sin_family = AF_INET;
-	sin.sin_port = htons(port);
-	sin.sin_addr.s_addr = INADDR_ANY;
-	
-	if(bind(listenfd, (const sockaddr*)&sin, sizeof(sin)) < 0)
-	{
-		printf_t("error: socket bind error(%d)\n", errno);
-		close(listenfd);
-		return -1;
-	}
-	
-	if(listen(listenfd, blog) < 0)
-	{
-		printf_t("error: listen error(%d)\n", errno);
-		close(listenfd);
-		return -1;
-	}
-
-	return listenfd;
-}
-
 int printf_t(const char * format,...)
 {
 	const int printf_max = 1024;
 	
 	char ach_msg[printf_max] = {0};
 	
-	time_t cur_t = time(NULL);
-    struct tm cur_tm = *localtime(&cur_t) ;
+	time_t cur = time(NULL);
+	struct tm cur_tm ;
+	localtime_r(&cur, &cur_tm);
 
 	sprintf(ach_msg, 
 			"%d-%02d-%02d %02d:%02d:%02d ",

@@ -11,7 +11,7 @@ int init_packet_buf(packet_buf & s,int size)
 {
 	if(!s.buf){
 	s.buf = (char*)malloc(size);
-	s.pos = 0;
+	s.has = 0;
 	s.len = size;
 	}
 	if(!s.buf){
@@ -26,7 +26,7 @@ void release_packet_buf(packet_buf & s)
 		free(s.buf);
 		s.buf = 0;
 	}
-	s.pos = 0;
+	s.has = 0;
 	s.len = 0;
 }
 
@@ -95,9 +95,9 @@ int connection::set_peeraddr(ipaddr & addr)
 	return 0;
 }
 
-int connection::set_localaddr(ipaddr & addr)
+int connection::set_peeraddr(struct sockaddr_in & addr)
 {
-	m_localaddr = addr;
+	inet_ntoa_convert(m_peeraddr , addr);
 	return 0;
 }
 	
@@ -174,7 +174,11 @@ int connection::set_alive_time(time_t tick)
 	m_alive_time = tick;
 	return 0;
 }
-	
+
+bool connection::connected(){
+	return m_status == kconnected;
+}
+
 int connection::init()
 {
 	m_events= EPOLLIN | EPOLLET | EPOLLPRI;
@@ -186,7 +190,7 @@ int connection::init()
 		init_packet_buf(m_recv_buf, recv_buf_len);
 	}
 	
-	struct sockaddr_in localaddr, peeraddr;
+	struct sockaddr_in localaddr;
 	int locallen = sizeof(localaddr);
 	if (getsockname(m_fd, (struct sockaddr *)&localaddr, (socklen_t*)&locallen) == 0)
 	{
@@ -196,17 +200,6 @@ int connection::init()
 	{
 		printf_t("error: getsockname error(%d)\n", errno);
 	}
-	
-	int peerlen = sizeof(peeraddr);
-	if (getpeername(m_fd, (struct sockaddr *)&peeraddr, (socklen_t*)&peerlen) == 0)
-	{	
-		inet_ntoa_convert(m_peeraddr, peeraddr);		
-	}
-	else
-	{
-		printf_t("error: getpeername error(%d)\n", errno);
-	}
-
 	return ret;
 }
 
@@ -333,7 +326,7 @@ int connection::post_send()
 	
 	auto_lock __lock(m_mutex);
 	
-	int len = m_send_buf.pos;
+	int len = m_send_buf.has;
 	if(len == 0)
 	{
 		printf_t("debug: post send no data socket(%d)\n", m_fd);
@@ -363,14 +356,14 @@ int connection::post_send()
 	
 	//printf_t("debug: post_send send %d/%d\n", total, len);
 	
-	m_send_buf.pos = len - total;
-	if(!m_send_buf.pos)
+	m_send_buf.has = len - total;
+	if(!m_send_buf.has)
 	{
 		disable_writing();
 	}
 	else
 	{
-		memcpy(m_send_buf.buf, m_send_buf.buf + total, m_send_buf.pos);
+		memcpy(m_send_buf.buf, m_send_buf.buf + total, m_send_buf.has);
 	}
 		
 	return 0;
@@ -394,20 +387,20 @@ int connection::post_send(char * data, int len)
 	
 	
 	//lock
-	int pos = m_send_buf.pos;
+	int has = m_send_buf.has;
 
-	if(pos)
+	if(has)
 	{
-		printf_t("debug: has left %d bytes, socket(%d)\n", pos + 1, m_fd);
-		if(pos + len > m_send_buf.len)
+		printf_t("debug: has left %d bytes, socket(%d)\n", has + 1, m_fd);
+		if(has + len > m_send_buf.len)
 		{
 			printf_t("warn : buffer overflow socket(%d)\n", m_fd);
 			return -1;
 		}
 		else
 		{
-			memcpy(m_send_buf.buf + pos, data, len);
-			m_send_buf.pos += len;
+			memcpy(m_send_buf.buf + has, data, len);
+			m_send_buf.has += len;
 			return 0;
 		}
 	}
@@ -430,8 +423,8 @@ int connection::post_send(char * data, int len)
 					printf_t("error: post_send init_packet_buf error(%d)\n", errno);
 					return -1;
 				}
-				memcpy(m_send_buf.buf + m_send_buf.pos, data + total, len - total);
-				m_send_buf.pos += len - total;
+				memcpy(m_send_buf.buf + m_send_buf.has, data + total, len - total);
+				m_send_buf.has += len - total;
 				
 				printf_t("warn : send buffer full total %d/%d error(%d %s) socket(%d) \n", 
 				total, len, errno, strerror(errno), m_fd);

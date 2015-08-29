@@ -8,12 +8,13 @@
 struct packet_buf
 {
 	char *buf;    //包缓冲区
-	int pos;      //缓冲区数据位置
+	int has;      //缓冲区数据位置
 	int len;      //缓冲区大小
 };
 
 enum{knew,kadd,kdel};
 enum{kconnected, kconnecting, kdisconnected};
+enum{recv_reason, write_reason, timeout_reason, error_reason};
 	
 class connection
 {
@@ -28,12 +29,8 @@ public:
 		
 	ipaddr & get_peeraddr();
 	
-	int set_peeraddr(ipaddr & addr);
-	
 	ipaddr & get_localaddr();
 	
-	int set_localaddr(ipaddr & addr);
-
 	int set_context(void * context);
 	
 	void* get_context();
@@ -50,9 +47,13 @@ public:
 		
 	int set_appid(int appid);
 		
+	bool   connected();
 protected:
 
 	time_t get_alive_time();
+	
+	int set_peeraddr(ipaddr & addr);
+	int set_peeraddr(struct sockaddr_in & addr);
 	
 	int set_alive_time(time_t tick);
 
@@ -97,6 +98,7 @@ protected:
 	int m_operation;
 	int m_status;
 	int m_ref;
+	
 	
 	time_t m_alive_time;
 };

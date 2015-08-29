@@ -1,6 +1,7 @@
 #include "app.h"
 #include "server.h"
 #include "stdio.h"
+#include "log.h"
 /*app class*/
 
 app::app()
@@ -8,7 +9,6 @@ app::app()
 	m_brun = false;
 	m_drop_msg = 0;
 	m_appid = 0;
-	m_mode = app_shared;
 	memset(m_name, 0, sizeof(m_name));
 }
 
@@ -24,7 +24,7 @@ void * app::app_run(void* param)
 	s->run();
 	return 0;
 }
-
+	
 int app::run()
 {
 	while(m_brun)
@@ -35,21 +35,37 @@ int app::run()
 			continue;
 		}
 		
-		app_msg * msg = (app_msg*)data;
+		hd_app * msg = (hd_app*)data;
 		
-		if(msg->from == from_net)
+		if(msg->type == tcp_type)
 		{
-			connection * n = (connection *)msg->ptr;
-			on_net(n, msg->event, msg->content, msg->length);
-			n->release_ref();
+			switch(msg->event){
+				case ev_recv:
+					on_recv(msg->u.tcp.n, msg->content, msg->length);
+					break;
+					
+				case ev_close:
+					on_close(msg->u.tcp.n, *((int*)msg->content));
+					break;
+					
+				case ev_accept:
+					on_accept(msg->u.tcp.n);
+					break;
+					
+				case ev_connect_ok:
+				case ev_connect_fail:
+					on_connect(msg->u.tcp.n);
+				break;
+			}
+			msg->u.tcp.n->release_ref();
 		}
-		else if(msg->from == from_timer)
+		else if(msg->type == timer_type)
 		{
-			on_timer(msg->event, msg->ptr);
+			on_timer(msg->event, msg->u.timer.interval, msg->u.timer.ptr);
 		}
-		else if(msg->from == from_app)
+		else if(msg->type == app_type)
 		{
-			on_app(msg->event, msg->content, msg->length, msg->src);
+			on_app(msg->event, msg->content, msg->length);
 		}
 		else
 		{
@@ -61,7 +77,7 @@ int app::run()
 	return 0;
 }
 
-int app::create(int appid, int msg_count, const char * app_name, int app_mode)
+int app::create(int appid, int msg_count, const char * app_name)
 {
 	if(m_ring_buf.create(msg_count) == -1)
 	{
@@ -80,7 +96,6 @@ int app::create(int appid, int msg_count, const char * app_name, int app_mode)
 	}
 	
 	m_appid = appid;
-	m_mode = app_mode;
 	return 0;
 }
 
@@ -89,17 +104,12 @@ int app::get_appid()
 	return m_appid;
 }
 
-int app::get_app_mode()
-{
-	return m_mode;
-}
-
-int  app::push(app_msg * msg)
+int  app::push(hd_app * msg)
 {
 	connection * n  = NULL;
-	if(msg->from == from_net)
+	if(msg->type == tcp_type)
 	{
-		n = (connection *)msg->ptr;
+		n = msg->u.tcp.n;
 		n->add_ref();
 	}
 	
@@ -128,62 +138,57 @@ int app::add_timer(int id, int interval, void * context)
 	return server::instance()->add_timer(id, interval, m_appid, context);
 }
 
-int app::post_connect(const char * ip, short port, int delay, void * context)
+
+int app::add_abs_timer(int id, int year, int mon, int day, 
+					  int hour, int min, int sec, void * context /* = NULL */){
+
+	return server::instance()->add_abs_timer(id, year, mon, day, hour, min, sec, m_appid, context);
+}
+
+int app::post_connect(const char * ip, ushort port, int delay, void * context)
 {
 	return server::instance()->post_connect(ip, port, delay, m_appid, context);
 }
 	
-int app::post_app_msg(int dst, int event, void * content, int length, int src)
+int app::post_app_msg(int dst, int event, void * content, int length)
 {
-	return server::instance()->post_app_msg(dst, event, content, length, src);
+	return server::instance()->post_app_msg(dst, event, content, length);
 }
 
 int app::log_out(int lev, const char * format,...)
 {
-	if(lev < server::instance()->get_loglev()){
-		return 0;
-	}
-	
+
 	char ach_msg[max_log_len] = {0};
-	
-	time_t cur_t = time(NULL);
-    struct tm cur_tm = *localtime(&cur_t);
-	
-	if(lev != log_none)
-	{
-		sprintf(ach_msg, 
-			"[%d-%02d-%02d %02d:%02d:%02d]",
-			 cur_tm.tm_year + 1900, 
-			 cur_tm.tm_mon + 1,
-			 cur_tm.tm_mday,
-			 cur_tm.tm_hour,
-			 cur_tm.tm_min, 
-			 cur_tm.tm_sec);
-    }
-	
+	time_t cur = time(NULL);
+	struct tm cur_tm ;
+	localtime_r(&cur, &cur_tm);
+
+	sprintf(ach_msg, 
+		"[%d-%02d-%02d %02d:%02d:%02d]",
+		 cur_tm.tm_year + 1900, 
+		 cur_tm.tm_mon + 1,
+		 cur_tm.tm_mday,
+		 cur_tm.tm_hour,
+		 cur_tm.tm_min, 
+		 cur_tm.tm_sec);
+    
 	char * pos = ach_msg + strlen(ach_msg);
-	
-	int color = color_green;
 	switch(lev)
 	{	
 		case log_error: 
-			color = color_red;
 			strcpy(pos, "[error]");
 		break;
 		case log_warn : 
-			color = color_yellow; 
 			strcpy(pos, "[warn]");
 		break;
 		case log_debug: 
-			color = color_green;
 			strcpy(pos, "[debug]");
 		break;
 		case log_info:
-			color = color_white;
 			strcpy(pos, "[info]");
 		break;
 		default:
-			color = color_purple;
+			strcpy(pos, "[unknown]");
 		break;
 	}
 	pos += strlen(pos);
@@ -195,6 +200,6 @@ int app::log_out(int lev, const char * format,...)
     vsnprintf(pos, nsize, format, pv_list); 
     va_end(pv_list);
 	
-	return server::instance()->log_out(lev, color, ach_msg);
+	return log::instance()->write_log(ach_msg);
 }
 

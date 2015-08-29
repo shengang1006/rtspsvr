@@ -27,7 +27,7 @@ public:
 	 *	init the time item
 	 *  it is thread safe
 	 */
-	int init(int size);
+	int init(int precision = 1000);
 
 	/*
 	 *	destroy the time item
@@ -54,7 +54,7 @@ public:
 	 *	get the first item timeout
 	 *  it is thread safe
 	 */
-	int  timeout(int & timeout);
+	int  timeout();
 
 private:
 
@@ -74,5 +74,6 @@ private:
 	int m_max_heap_size;
 	int m_cur_heap_size;
 	auto_mutex m_mutex;
+	int m_precision;
 };
 

@@ -5,6 +5,7 @@
 #include "log.h"
 
 #define max_app_num     16
+#define max_udp_len     (2<<16) //64k
 
 /*
 */
@@ -21,37 +22,31 @@ public:
 	
 	virtual ~server();
 	
-	int init(short port, int reuse = 1);
+	int init();
 	
+	int create_tcp_server(ushort port, int reuse = 1);
+		
     int loop();
 	
 	int init_log(const char* path, const char * name, int max_size = 8<<20);
 	
-	int init_telnet(const char * prompt, short port); 
-	
-	int reg_cmd(const char* name, void* func);
-	
-	int log_out(int lev, int color, const char * text);
-	
-	int set_loglev(int lev);
-	
-	int get_loglev();
-	
 	int set_keepalive(int timeout);
 	
-	int register_app(app * a, int msg_count, const char * name, int app_mode = app_shared);
+	int register_app(app * a, int msg_count, const char * name);
 	
 	int add_timer(int id, int interval, int appid, void * context = NULL);
 	
-	int post_connect(const char * ip, short port, int delay, int appid = -1, void * context = NULL);
+	int add_abs_timer(int id, int year, int mon, int day, 
+					  int hour, int min, int sec, int appid, void * context = NULL);
+
+		
+	int post_connect(const char * ip, ushort port, int delay, int appid, void * context = NULL);
 	
-	int post_app_msg(int dst, int event, void * content = NULL, int length = 0, int src = -1);
+	int post_app_msg(int dst, int event, void *content = NULL, int length = 0);
 		
 	int stop();
 	
-	int create_udp_server(int port, int reuse = 1);
-	
-	int create_udp_client(const char * ip, short port);
+	int get_tcp_port();
 	
 protected:
 	
@@ -59,7 +54,7 @@ protected:
 
 	int handle_recv(connection * n);
 	
-	int handle_close(connection * n);
+	int handle_close(connection * n, int reason);
 	
 	int handle_accept();
 	
@@ -69,9 +64,11 @@ protected:
 	
 	int packet_dispatch(connection * n);
 	
-	int post_msg(int dst, void* ptr, int from, int event, void * content, int length, int src);
+	int post_msg(int dst, hd_app * msg);
 	
-	int post_con_msg(connection * n, int event, void * content = NULL, int length = 0);
+	int post_tcp_msg(connection * n, int event, void * content = NULL, int length = 0);
+	
+	int post_timer_msg(evtime * e);
 
 	int handle_connect(connection * n);
 	
@@ -81,19 +78,18 @@ protected:
 	
 	int start_connect(evtime * e);
 
-	int get_shared_app();
+	int get_appid();
 private:
 	int m_epfd;
 	int m_listenfd;
-	int m_listen_udpfd;
+	int m_listen_port;
+	
 	app * m_apps[max_app_num];
 	int m_app_num;
 	int m_last_app;
 	timer m_timer;
 	int m_keepalive_timeout;
 	con_list m_con_list;
-	tellog m_tellog;
-	int m_log_lev;
 };
 
 

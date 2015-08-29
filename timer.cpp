@@ -9,6 +9,7 @@ timer::timer()
 	m_max_heap_size = 0;
 	m_cur_heap_size = 0;
 	m_ppevtime = NULL;
+	m_precision = 1000;
 }
 
 timer::~timer()
@@ -20,29 +21,28 @@ timer::~timer()
  *	init the time item
  *  it is thread safe
  */
-int timer::init(int size)
+int timer::init(int precision)
 {
 	auto_lock __lock(m_mutex);
 
-	if (m_max_heap_size)
-	{
-		printf_t("error: timer.already init\n");
+		if (m_max_heap_size){
+		printf_t("error: timer already init %d\n", m_max_heap_size);
 		return -1;
 	}
 
-	size = size > 0 ? size : 16;
-	m_ppevtime = (evtime**)malloc(sizeof(evtime*) * size);
+	int init_size = 16;
+	m_ppevtime = (evtime**)malloc(sizeof(evtime*) * init_size);
 
-	if (!m_ppevtime)
-	{
-		printf_t("error: nettimer_init.malloc memory for evtime\n");
+	if (!m_ppevtime){
+		printf_t("error: malloc memory for evtime\n");
 		return -1;
 	}
 
-	memset(m_ppevtime, 0, sizeof(evtime*) * size);
+	memset(m_ppevtime, 0, sizeof(evtime*) * init_size);
 	m_cur_heap_size = 0;
-	m_max_heap_size = size;
-
+	m_max_heap_size = init_size;
+	m_precision = precision < 50 ? 50 : precision;
+	
 	return 0;
 }
 
@@ -166,16 +166,23 @@ int timer::pop_timeout(evtime & ev)
  *	get the first item timeout
  *  it is thread safe
  */
-int  timer::timeout(int & timeout)
+int  timer::timeout()
 {
 	auto_lock __lock(m_mutex);
-	if(m_cur_heap_size)
-	{
-		timeout = (int)(m_ppevtime[0]->timeout - get_tick_count());
-		timeout = timeout < 0 ? 0: timeout;
+	if(!m_cur_heap_size){
+		return m_precision;
+	}
+	
+	int timeout = (int)(m_ppevtime[0]->timeout - get_tick_count());
+	if(timeout < 0){
 		return 0;
 	}
-	return -1;
+	else if(timeout > m_precision){
+		return m_precision;
+	}
+	else{
+		return timeout;
+	}
 }
 
 int timer::min_heap_adjust_up(int holeindex, evtime * e)
@@ -218,6 +225,15 @@ int timer::min_heap_adjust_down(int holeindex, evtime * e)
  */
 int timer::compare(evtime * time1, evtime * time2)
 {
-	return (int)(time1->timeout - time2->timeout);
+	int64 diff = time1->timeout - time2->timeout;
+	if(diff < 0){
+		return -1;
+	}
+	else if(diff > 0){
+		return 1;
+	}
+	else{
+		return 0;
+	}
 }
 

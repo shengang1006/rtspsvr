@@ -10,12 +10,11 @@ server::server()
 {
 	m_epfd = -1;
 	m_listenfd  = -1;
-	m_listen_udpfd = -1;
+	m_listen_port  = -1;
 	m_app_num = 0;
 	m_last_app = -1;
 	memset(m_apps, 0, sizeof(m_apps));
 	m_keepalive_timeout = 120;
-	m_log_lev = log_debug;
 }
 
 
@@ -40,9 +39,8 @@ int server::run()
 	
 	while(true){
 	
-		int timeout = -1;
-		m_timer.timeout(timeout);
-		 
+		int timeout = m_timer.timeout();
+		
 		int res = epoll_wait (m_epfd, events, event_num, timeout);
 		
 		if (res == -1)
@@ -55,12 +53,16 @@ int server::run()
 			continue;
 		}
 		
+		if(timeout == 0){
+			printf_t("debug: epoll_wait timeout %d\n", res);
+		}
+		
 		time_t cur = time(NULL);
 				
 		for(int i = 0; i < res; i++)
 		{
 			//accept
-			if (events[i].data.fd == m_listenfd && m_listenfd >= 0)
+			if (events[i].data.ptr == &m_listenfd)
 			{	
 				handle_accept();
 				continue;
@@ -74,7 +76,7 @@ int server::run()
 				n->set_alive_time(cur);
 				if(handle_recv(n) < 0)
 				{
-					handle_close(n);
+					handle_close(n, recv_reason);
 					continue;
 				}
 			}
@@ -84,7 +86,7 @@ int server::run()
 			{
 				if(handle_write(n) <0)
 				{
-					handle_close(n);
+					handle_close(n, write_reason);
 					continue;
 				}
 			}
@@ -92,7 +94,7 @@ int server::run()
 			//error
 			if (events[i].events & (EPOLLERR | EPOLLHUP ))
 			{
-				handle_close(n);
+				handle_close(n, error_reason);
 			}
 		}
 	
@@ -112,6 +114,12 @@ int server::run()
 	return 0;
 }
 
+int server::get_tcp_port()
+{
+	return 	m_listen_port;
+}
+	
+
 /*
 void* ptr;     //消息节点，可以为空
 	int appid;
@@ -120,15 +128,15 @@ void* ptr;     //消息节点，可以为空
 	int length;     //消息长度 
 	char* content;  //消息内容
 */
-int server::post_msg(int dst, void* ptr, int from, int event, void * content, int length, int src)
+int server::post_msg(int appid, hd_app * temp)
 {
-	if(dst < 0 || dst >= m_app_num)
+	if(appid < 0 || appid >= m_app_num)
 	{
-		printf_t("error: dst_app error\n");
+		printf_t("error: appid error\n");
 		return -1;
 	}
 	
-	app * a = m_apps[dst];
+	app * a = m_apps[appid];
 	if(!a)
 	{
 		printf_t("error: no app bind\n");
@@ -136,28 +144,18 @@ int server::post_msg(int dst, void* ptr, int from, int event, void * content, in
 	}
 	
 	//md by 2015-1-20
-	app_msg* msg = (app_msg*)malloc(sizeof(app_msg) + length + 1);
+	hd_app * msg = (hd_app*)malloc(sizeof(hd_app) + temp->length + 1);
 	if(!msg)
 	{
-		printf_t("error: malloc %d bytes fail, error(%d)\n", sizeof(app_msg) + length + 1, errno);
+		printf_t("error: malloc %d bytes fail, error(%d)\n", sizeof(hd_app) + temp->length + 1, errno);
 		return -1;
 	}
-
-	msg->ptr = ptr;
-	msg->from = from;
-	msg->src = src;
-	msg->event = event;
-	msg->length = length;
+	memcpy(msg, temp, sizeof(hd_app));
 	
-	if(length)
-	{
-		msg->content = (char*)msg + sizeof(app_msg) ;
-		memcpy(msg->content, content, length);
-		msg->content[length] = 0;	//add by 2015-1-20
-	}
-	else
-	{
-		msg->content = NULL;
+	if(temp->length){
+		msg->content = (char*)msg + sizeof(hd_app) ;
+		memcpy(msg->content, temp->content, temp->length);
+		msg->content[temp->length] = 0;	//add by 2015-1-20
 	}
 	
 	if(a->push(msg) < 0)
@@ -170,83 +168,90 @@ int server::post_msg(int dst, void* ptr, int from, int event, void * content, in
 	return 0;
 }
 
-int server::post_app_msg(int dst, int event, void * content, int length, int src)
+int server::post_app_msg(int dst, int event, void * content, int length)
 {
-	return post_msg(dst, NULL, from_app, event, content, length, src);
+	hd_app  msg = {0};
+	msg.event = event;
+	msg.content = (char*)content;
+	msg.length = length;
+	msg.type = app_type;
+
+	return post_msg(dst, &msg);
 }
 
-int server::post_con_msg(connection * n, int event, void * content, int length)
+int server::post_tcp_msg(connection * n, int event, void * content, int length)
 {
-	return post_msg(n->get_appid(), n, from_net, event, content, length, -1);
+	hd_app  msg = {0};
+	msg.event = event;
+	msg.content = (char*)content;
+	msg.length = length;
+	msg.type = tcp_type;
+	msg.u.tcp.n = n;
+	return post_msg(n->get_appid(), &msg);
 }
 
-int server::get_shared_app()
+int server::post_timer_msg(evtime * e)
 {
-	int count = 0;
-	while(count++ < m_app_num)
-	{
-		m_last_app = (m_last_app + 1) % m_app_num;
-		if(m_apps[m_last_app]->get_app_mode() == app_shared)
-		{
-			return m_last_app;
-		}
-	}
-	return -1;
+	hd_app msg = {0};
+	msg.event = e->id;
+	msg.type = timer_type;
+	msg.u.timer.ptr = e->ptr;
+	msg.u.timer.interval = e->interval;
+	return post_msg(e->appid, &msg);
+}
+
+int server::get_appid()
+{
+	return m_last_app = (m_last_app + 1) % m_app_num;
 }
 
 int server::packet_dispatch(connection * n)
 {
 	packet_buf * p_buf = n->get_recv_buf();
-	char* packet = NULL;
-	int packet_len = 0;	
+
 	int offset = 0;
-	
 	int dst = n->get_appid();
 	if(dst < 0 || dst >= m_app_num){
+		printf_t("packet_dispatch error appid %d\n", dst);
+		return -1;
 	}
 	
 	app * a = m_apps[dst];
 	if(!a){
+		printf_t("packet_dispatch invalid appid %d\n", dst);
 		return -1;
 	}
 	
-	for(;;)
+	while(p_buf->has > 0)
 	{
-		packet_len = a->on_unpack(p_buf->buf + offset, p_buf->pos , packet);
-		if(packet_len <=0 ){
-			break;
-		}
+		char* packet = NULL;
+		int pktlen = 0;
+		int consume = a->on_unpack(p_buf->buf + offset, p_buf->has ,pktlen, packet);
 		
-		p_buf->pos -= packet_len;
-		offset += packet_len;
+		if (consume < 0 || consume > p_buf->has){
+			printf_t("unpack error consume(%d) has(%d)\n", consume, p_buf->has);
+			return -1;
+		}
 
-		//packet error
-		if(p_buf->pos <0)
-		{
-			printf_t("error: packet error too len\n");
-			break;
+		if (!consume){
+			if(p_buf->has && offset){
+				memcpy(p_buf->buf, p_buf->buf + offset, p_buf->has);
+			}
+			return 0;
+		}
+
+		if (pktlen < 0  || pktlen > consume){
+			printf_t("unpack error pktlen(%d) consume(%d)\n", pktlen, consume);
+			return -1;
 		}
 		
-		post_con_msg(n, ev_recv, packet, packet_len);
-					
-		if(p_buf->pos ==0)
-		{
-			break;
-		}
-	}
-	
-	//copy left
-	if(p_buf->pos > 0 && offset > 0)
-	{
-		memcpy(p_buf->buf, p_buf->buf + offset, p_buf->pos);
-	}
-	
-	//packet error
-	if(packet_len < 0)
-	{
-		//close socket
-		printf_t("error: packet error\n");
-		return -1;
+		p_buf->has -= consume;
+		offset += consume;
+		
+		//ignore empty packet
+		if(pktlen && packet){
+			post_tcp_msg(n, ev_recv, packet, pktlen);	
+		}	
 	}
 	
 	return 0;
@@ -265,17 +270,16 @@ int server::check_keepalive(evtime * e)
 			continue;
 		}
 		
-		int dis = (int)(cur - m_keepalive_timeout  - n->get_alive_time());
-		if(dis <= 0)
+		int dis = (int)(cur  - n->get_alive_time());
+		if(dis < m_keepalive_timeout)
 		{
-			//printf_t("debug: check alive_time(%u)\n", n->get_alive_time());
 			break;
 		}
-		printf_t("warn : connection(%d) keep timeout(%d)\n", n->fd(), dis + m_keepalive_timeout);
+		printf_t("warn : connection(%d) time out(%d)\n", n->fd(), dis);
 		
 		//fixed 2014-12-26
 		connection * next =  m_con_list.go_next();
-		handle_close(n);
+		handle_close(n, timeout_reason);
 		n = next;
 	}
 	m_timer.add(e->id, e->interval, e->ptr);
@@ -324,7 +328,7 @@ int server::start_connect(evtime * e)
 	
 	if( n->get_appid() < 0)
 	{
-		n->set_appid(get_shared_app());
+		n->set_appid(get_appid());
 	}
 	
 	if (ret < 0)
@@ -334,7 +338,7 @@ int server::start_connect(evtime * e)
 			printf_t("error: connect error(%d)\n", errno);
 			n->set_status(kdisconnected);
 			m_con_list.push_front(n);
-			post_con_msg(n, ev_connect_fail);
+			post_tcp_msg(n, ev_connect_fail);
 			return -1;
 		}	
 		n->set_status(kconnecting);
@@ -345,7 +349,7 @@ int server::start_connect(evtime * e)
 		n->set_status(kconnected);
 		n->set_alive_time(time(NULL));
 		m_con_list.push_back(n);			
-		post_con_msg(n, ev_connect_ok);
+		post_tcp_msg(n, ev_connect_ok);
 	}
 
 	return 0;
@@ -372,9 +376,8 @@ int server::handle_timer(evtime * e)
 	}
 	else
 	{	
-		post_msg(e->appid, e->ptr,from_timer, e->id, NULL, 0, -1);
+		post_timer_msg(e);
 	}
-	
 	return 0;
 }
 
@@ -385,15 +388,14 @@ int server::handle_recv(connection * n)
 	//et mode
 	do 
 	{
-		int len = p_buf->len - p_buf->pos;
-	
-		if(len <= 0)
-		{
+		int len = p_buf->len - p_buf->has;
+		
+		if(len <= 0){
 			printf_t("error: packet too large\n");
 			break;
 		}
 		
-		int recv_bytes  = recv(n->fd(), p_buf->buf + p_buf->pos, len, 0);
+		int recv_bytes  = recv(n->fd(), p_buf->buf + p_buf->has, len, 0);
 	
 		if(recv_bytes < 0)
 		{	
@@ -411,7 +413,7 @@ int server::handle_recv(connection * n)
 		}
 		else
 		{
-			p_buf->pos += recv_bytes;
+			p_buf->has += recv_bytes;
 		}
 		
 		if(packet_dispatch(n) < 0)
@@ -446,7 +448,9 @@ int server::handle_connect(connection * n)
 	n->set_alive_time(time(NULL));
 	n->set_status(kconnected);		
 	m_con_list.move_to_back(n);
-	post_con_msg(n, ev_connect_ok);
+	post_tcp_msg(n, ev_connect_ok);
+	
+	printf_t("debug: connect ok socket(%d)\n", n->fd());
 	
 	return 0;
 }
@@ -463,19 +467,19 @@ int server::handle_write(connection * n)
 	}
 }
 
-int server::handle_close(connection * n)
+int server::handle_close(connection * n,  int reason)
 {
 	if(n->get_status() == kconnected)
 	{
 		n->set_status(kdisconnected);
 		m_con_list.move_to_front(n);
-		post_con_msg(n, ev_close);
+		post_tcp_msg(n, ev_close, &reason, sizeof(reason));
 	}
 	else if(n->get_status() == kconnecting)
 	{
 		n->set_status(kdisconnected);
 		m_con_list.move_to_front(n);
-		post_con_msg(n, ev_connect_fail);
+		post_tcp_msg(n, ev_connect_fail);
 	}
 	else
 	{
@@ -515,11 +519,16 @@ int server::handle_accept()
 		
 		//allocate appid		
 		connection * n = new connection(m_epfd, fd);
-		n->set_appid(get_shared_app());
+		n->set_appid(get_appid());
 		n->set_status(kconnected);
+		n->set_peeraddr(peeraddr);
 		n->set_alive_time(cur);
 		m_con_list.push_back(n);
-		post_con_msg(n, ev_accept);
+		post_tcp_msg(n, ev_accept);
+		
+		ipaddr paddr = n->get_peeraddr();
+		
+		printf_t("debug: accept from %s:%d  socket(%d)\n",paddr.ip, paddr.port, fd);
 	}
 	
 	
@@ -540,37 +549,10 @@ int server::set_keepalive(int timeout)
 
 int server::init_log(const char* path, const char * name, int max_size)
 {
-	return m_tellog.init_log(path, name, max_size);
-}
-	
-int server::init_telnet(const char * prompt, short port)
-{
-	return m_tellog.init_telnet(prompt, port);
+	return log::instance()->init(path, name, max_size);
 }
 
-int server::reg_cmd(const char* name, void* func)
-{
-	return m_tellog.reg_cmd(name, func);
-}
-
-int server::set_loglev(int lev)
-{
-	m_log_lev = lev;
-	return 0;
-}
-
-int server::get_loglev()
-{
-	return m_log_lev;
-}
-
-int server::log_out(int lev, int color, const char * text)
-{
-	return m_tellog.print(text, color);
-}
-
-
-int server::init(short port, int reuse /*= 1*/)
+int server::init()
 {
 	//resource limit set 2015-1-23
 	struct rlimit limit;
@@ -599,58 +581,84 @@ int server::init(short port, int reuse /*= 1*/)
 		printf_t("error: pthread_sigmask error(%d)\n", errno);
 	}
 
-	//init timer
-	if(m_timer.init(0) < 0)
-	{
-		printf_t("error: timer init fail\n");
-		return -1;
-	}
-	
-	//init log module
-	if(m_tellog.init() < 0)
-	{
-		printf_t("error: tellog init fail\n");
-		return -1;
-	}
-	
-	//add system timer event
-	m_timer.add(ev_timer_active,  500, NULL);
-	m_timer.add(ev_con_keepalive, 30000, NULL);
-	m_timer.add(ev_con_clear, 5000, NULL);
-
 	//create epoll
 	m_epfd = epoll_create (32000);
-	if (m_epfd < 0) 
-	{
+	if (m_epfd < 0) {	
 		printf_t("error: epoll create error(%d)\n", errno);
 		return -1;
 	}
 	
-	//check weather if need create tcp listen
-	if(port <= 0){
-		printf_t("warn: port <= 0, not create listen socket\n");
-		return 0;
-	}
-	
-	//create tcp listen socket
-	m_listenfd = create_tcp_listen(port, reuse, SOMAXCONN);
-	if(m_listenfd < 0)
+		//init timer
+	if(m_timer.init() < 0)
 	{
-		printf_t("error: create_tcp_listen error(%d)\n", errno);
+		printf_t("error: timer init fail\n");
+		close(m_epfd);
 		return -1;
 	}
 	
-	//add listen fd
-	struct epoll_event ev;
-	ev.data.fd = m_listenfd;
-	ev.events =  EPOLLIN | EPOLLET | EPOLLPRI;
-	if (epoll_ctl (m_epfd, EPOLL_CTL_ADD, m_listenfd, &ev) < 0) {
-		printf_t("error: epoll EPOLL_CTL_ADD error(%d)\n", errno);
-		return -1;
-	}
+	//add system timer event
+	m_timer.add(ev_timer_active,  3600 * 1000, NULL);
+	m_timer.add(ev_con_keepalive, 30000, NULL);
+	m_timer.add(ev_con_clear, 5000, NULL);
+	
 	return 0;
 }
 
+
+int server::create_tcp_server(ushort port, int reuse /*= 1*/){
+	
+	int listenfd = socket(AF_INET, SOCK_STREAM, 0);	
+	if(listenfd < 0){
+		printf_t("error: create listen socket error(%d)\n", errno);
+		return -1;
+	}
+	
+	if (make_no_block(listenfd) < 0){
+		printf_t("error: fcnt getfl error(%d)\n", errno);
+		close(listenfd);
+		return -1;
+	}
+	
+	if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0){
+		printf_t("error: setsockopt SO_REUSEADDR error(%d)\n", errno);
+		close(listenfd);
+		return -1;
+	}
+	
+	// bind & listen    
+	sockaddr_in sin ;         
+	memset(&sin, 0, sizeof(struct sockaddr_in));
+	sin.sin_family = AF_INET;
+	sin.sin_port = htons(port);
+	sin.sin_addr.s_addr = INADDR_ANY;
+	
+	if(bind(listenfd, (const sockaddr*)&sin, sizeof(sin)) < 0){
+		printf_t("error: socket bind error(%d)\n", errno);
+		close(listenfd);
+		return -1;
+	}
+	
+	if(listen(listenfd, SOMAXCONN) < 0){
+		printf_t("error: listen error(%d)\n", errno);
+		close(listenfd);
+		return -1;
+	}
+
+	//add listen fd
+	m_listenfd = listenfd;
+	m_listen_port = port;
+	
+	struct epoll_event ev;
+	ev.data.ptr = &m_listenfd;
+	ev.events =  EPOLLIN | EPOLLET | EPOLLPRI;
+	if (epoll_ctl (m_epfd, EPOLL_CTL_ADD, m_listenfd, &ev) < 0) {
+		printf_t("error: epoll EPOLL_CTL_ADD error(%d)\n", errno);
+		close(m_listenfd);
+		return -1;
+	}
+
+	return 0;
+}
 
 int server::loop()
 {
@@ -671,14 +679,35 @@ int server::add_timer(int id, int interval, int appid, void * context)
 	return m_timer.add(id, interval, context, appid) ? 0 : -1;
 }
 
+int server::add_abs_timer(int id, int year, int mon, int day, 
+						  int hour, int min, int sec, int appid,  void * context /* = NULL */){
 
-int server::register_app(app * a, int msg_count, const char * name,  int app_mode)
+	struct tm tnow = {0};
+    tnow.tm_year = year - 1900;
+    tnow.tm_mon  = mon - 1;
+    tnow.tm_mday = day;
+    tnow.tm_hour = hour;
+    tnow.tm_min  = min;
+    tnow.tm_sec  = sec;
+
+	time_t tsecs = mktime(&tnow);
+	if(tsecs == (time_t)(-1)){
+		return -1;
+	}
+
+	time_t curtime;
+	curtime = time(NULL);
+	int interval = (int)difftime(tsecs, curtime) * 1000;
+	return m_timer.add(id, interval, context, appid) ? 0 : -1;
+}
+
+int server::register_app(app * a, int msg_count, const char * name)
 {
 	if(!a || m_app_num >= max_app_num){
 		return -1;
 	}
 
-	if(a->create(m_app_num, msg_count, name, app_mode) < 0)
+	if(a->create(m_app_num, msg_count, name) < 0)
 	{
 		delete a;
 		return -1;
@@ -689,11 +718,11 @@ int server::register_app(app * a, int msg_count, const char * name,  int app_mod
 	return  m_app_num++;
 }
 
-int server::post_connect(const char * ip, short port, int delay, int appid ,void * context)
+int server::post_connect(const char * ip, ushort port, int delay, int appid , void * context)
 {
-	if(delay < 0 || port <= 0)
+	if(delay < 0)
 	{
-		printf_t("error: delay(%d) < 0 or port(%d) <= 0\n", delay, port);
+		printf_t("error: delay(%d) <= 0\n", delay);
 		return -1;
 	}
 	
@@ -742,12 +771,6 @@ int server::stop()
 		m_listenfd = -1;
 	}
 	
-	if(m_listen_udpfd >= 0)
-	{
-		close(m_listen_udpfd);
-		m_listen_udpfd = -1;
-	}
-	
 	m_timer.release();
 	
 	for(int k = 0; k < m_app_num; k++)
@@ -758,75 +781,4 @@ int server::stop()
 
 	return 0;
 }
-
-int server::create_udp_server(int port, int reuse /*= 1*/)
-{
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if(fd < 0){
-		return -1;
-	}
-	
-	if (make_no_block(fd) < 0){
-		printf_t("error: fcnt getfl error(%d)\n", errno);
-		close(fd);
-		return -1;
-	}
-	
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
-	{
-		printf_t("error: setsockopt SO_REUSEADDR error(%d)\n", errno);
-		close(fd);
-		return -1;
-	}
-	
-	// bind & listen    
-	sockaddr_in sin ;         
-	memset(&sin, 0, sizeof(struct sockaddr_in));
-	sin.sin_family = AF_INET;
-	sin.sin_port = htons(port);
-	sin.sin_addr.s_addr = INADDR_ANY;
-	
-	if(bind(fd, (const sockaddr*)&sin, sizeof(sin)) < 0)
-	{
-		printf_t("error: socket bind error(%d)\n", errno);
-		close(fd);
-		return -1;
-	}
-	
-	//add listen fd
-	struct epoll_event ev;
-	ev.data.fd = fd;
-	ev.events =  EPOLLIN | EPOLLET | EPOLLPRI;
-	if (epoll_ctl (m_epfd, EPOLL_CTL_ADD, fd, &ev) < 0) {
-		printf_t("error: epoll EPOLL_CTL_ADD error(%d)\n", errno);
-		return -1;
-	}
-	
-	m_listen_udpfd = fd;
-	
-	return 0;
-}
-	
-int server::create_udp_client(const char * ip, short port)
-{
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if(fd < 0){
-		return -1;
-	}
-	
-	if (make_no_block(fd) < 0){
-		printf_t("error: fcnt getfl error(%d)\n", errno);
-		close(fd);
-		return -1;
-	}
-	
-	sockaddr_in sin ;         
-	memset(&sin, 0, sizeof(struct sockaddr_in));
-	sin.sin_family = AF_INET;
-	sin.sin_port = htons(port);
-	sin.sin_addr.s_addr = inet_addr(ip);
-	
-	return 0;
-}
-
 

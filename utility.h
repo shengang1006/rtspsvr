@@ -20,12 +20,13 @@
 #define PR_GET_NAME 16
 #endif
 
-#define max_app_name 64
+#define max_app_name 16
 
 
 typedef unsigned int uint;
 typedef unsigned short ushort;
-typedef long long int64;
+typedef uint64_t uint64;
+typedef int64_t  int64;
 typedef void* (*thread_fun)(void * param);
 typedef intptr_t intptr;
 
@@ -75,7 +76,7 @@ public:
 	~auto_lock();
 	
 private:
-	auto_mutex &m_mutex;
+	auto_mutex m_mutex;
 };
 
 
@@ -104,9 +105,9 @@ protected:
 
 int create_thread(pthread_t & tid, thread_fun fun, const char * name, void * param);
 
-int make_no_block(int fd);
+int create_directory(const char * path, int amode = 777);
 
-int create_tcp_listen(short port, int reuse, int blog);
+int make_no_block(int fd);
 
 int64 get_tick_count();
 
