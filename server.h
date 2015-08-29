@@ -76,7 +76,7 @@ protected:
 	
 	int start_connect(evtime * e);
 
-	int get_appid();
+	int allot_appid();
 private:
 	int m_epfd;
 	int m_listenfd;

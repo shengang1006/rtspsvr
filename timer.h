@@ -36,7 +36,7 @@ public:
 	int release();
 
 
-	evtime* add(int id, int interval, void* data, int appid = -1);
+	int add(int id, int interval, void* data, int appid = -1);
 
 	/*
 	 *	remove the time item

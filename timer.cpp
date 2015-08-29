@@ -71,13 +71,13 @@ int timer::release()
 	return 0;
 }
 
-evtime* timer::add(int id, int interval, void* context, int appid)
+int timer::add(int id, int interval, void* context, int appid)
 {
 	auto_lock __lock(m_mutex);
 
 	if (interval < 0)
 	{
-		return NULL;
+		return -1;
 	}
 
 	//save id
@@ -90,7 +90,7 @@ evtime* timer::add(int id, int interval, void* context, int appid)
 	if (!m_ppevtime)
 	{
 		printf_t("error: realloc memory for evtime\n");
-		return NULL;
+		return -1;
 	}
 
 	evtime * e = new evtime;
@@ -102,7 +102,7 @@ evtime* timer::add(int id, int interval, void* context, int appid)
 
 	min_heap_adjust_up(m_cur_heap_size++, e);
 
-	return e;
+	return 0;
 }
 
 /*

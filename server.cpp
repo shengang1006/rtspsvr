@@ -155,7 +155,7 @@ int server::post_timer_msg(evtime * e)
 	return m_apps[e->appid]->push(msg);
 }
 
-int server::get_appid()
+int server::allot_appid()
 {
 	return m_last_app = (m_last_app + 1) % m_app_num;
 }
@@ -165,17 +165,7 @@ int server::packet_dispatch(connection * n)
 	packet_buf * p_buf = n->get_recv_buf();
 
 	int offset = 0;
-	int dst = n->get_appid();
-	if(dst < 0 || dst >= m_app_num){
-		printf_t("packet_dispatch error appid %d\n", dst);
-		return -1;
-	}
-	
-	app * a = m_apps[dst];
-	if(!a){
-		printf_t("packet_dispatch invalid appid %d\n", dst);
-		return -1;
-	}
+	app * a = m_apps[n->get_appid()];
 	
 	while(p_buf->has > 0)
 	{
@@ -280,11 +270,6 @@ int server::start_connect(evtime * e)
 	seraddr.sin_port = htons(peeraddr.port); 
 
 	int ret = connect(n->fd(), (sockaddr *)&seraddr, sizeof(sockaddr));
-	
-	if( n->get_appid() < 0)
-	{
-		n->set_appid(get_appid());
-	}
 	
 	if (ret < 0)
 	{	
@@ -446,13 +431,11 @@ int server::handle_close(connection * n,  int reason)
 
 int server::handle_accept()
 {
-
 	int fd = -1;
 	struct sockaddr_in peeraddr; 
 	int addrlen = sizeof(peeraddr); 
-	int listenfd = m_listenfd;
 	time_t cur = time(NULL);
-	while((fd = accept(listenfd, (struct sockaddr *)&peeraddr, (socklen_t*)&addrlen)) >= 0)
+	while((fd = accept(m_listenfd, (struct sockaddr *)&peeraddr, (socklen_t*)&addrlen)) >= 0)
 	{	
 			
 		if (make_no_block(fd) < 0){
@@ -474,15 +457,14 @@ int server::handle_accept()
 		
 		//allocate appid		
 		connection * n = new connection(m_epfd, fd);
-		n->set_appid(get_appid());
+		n->set_appid(allot_appid());
 		n->set_status(kconnected);
 		n->set_peeraddr(peeraddr);
 		n->set_alive_time(cur);
 		m_con_list.push_back(n);
 		post_tcp_msg(n, ev_accept);
 		
-		ipaddr paddr = n->get_peeraddr();
-		
+		ipaddr &paddr = n->get_peeraddr();
 		printf_t("debug: accept from %s:%d  socket(%d)\n",paddr.ip, paddr.port, fd);
 	}
 	
@@ -627,11 +609,7 @@ int server::loop()
 
 int server::add_timer(int id, int interval, int appid, void * context)
 {
-	if(appid < 0)
-	{
-		return -1;
-	}
-	return m_timer.add(id, interval, context, appid) ? 0 : -1;
+	return m_timer.add(id, interval, context, appid);
 }
 
 int server::add_abs_timer(int id, int year, int mon, int day, 
@@ -653,7 +631,7 @@ int server::add_abs_timer(int id, int year, int mon, int day,
 	time_t curtime;
 	curtime = time(NULL);
 	int interval = (int)difftime(tsecs, curtime) * 1000;
-	return m_timer.add(id, interval, context, appid) ? 0 : -1;
+	return m_timer.add(id, interval, context, appid);
 }
 
 int server::register_app(app * a, int msg_count, const char * name)
@@ -703,8 +681,7 @@ int server::post_connect(const char * ip, ushort port, int delay, int appid , vo
 	n->set_context(context);
 	n->set_appid(appid);
 		
-	if(!m_timer.add(ev_con_connect, delay, n))
-	{
+	if(m_timer.add(ev_con_connect, delay, n) < 0){
 		delete n;
 		return -1;
 	}
