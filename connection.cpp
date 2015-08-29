@@ -44,7 +44,7 @@ connection::connection(int epfd, int fd)
 	m_fd = fd;
 	m_epfd = epfd;
 	m_context = NULL;
-	m_inner_context = NULL;
+	m_list_node = NULL;
 	m_events = EPOLLNONE;
 	m_status = kdisconnected;
 	m_operation = knew;
@@ -66,7 +66,7 @@ connection::~connection()
 	m_appid = 0;
 	m_epfd = -1;
 	m_context = NULL;
-	m_inner_context = NULL;		
+	m_list_node = NULL;		
 	m_events = EPOLLNONE;
 	m_status = kdisconnected;
 	m_operation = kdel;
@@ -89,16 +89,14 @@ ipaddr& connection::get_localaddr()
 	return m_localaddr;
 }
 
-int connection::set_peeraddr(ipaddr & addr)
+void connection::set_peeraddr(ipaddr & addr)
 {
 	m_peeraddr = addr;
-	return 0;
 }
 
-int connection::set_peeraddr(struct sockaddr_in & addr)
+void connection::set_peeraddr(struct sockaddr_in & addr)
 {
 	inet_ntoa_convert(m_peeraddr , addr);
-	return 0;
 }
 	
 packet_buf * connection::get_recv_buf()
@@ -111,16 +109,14 @@ int connection::get_appid()
 	return m_appid;
 }
 
-int connection::set_appid(int appid)
+void connection::set_appid(int appid)
 {
 	m_appid = appid;
-	return 0;
 }
 	
-int connection::set_context(void * context)
+void connection::set_context(void * context)
 {
 	m_context = context;
-	return 0;
 }
 	
 void* connection::get_context()
@@ -153,32 +149,29 @@ int connection::get_status()
 	return m_status;
 }
 
-int connection::set_inner_context(void * context)
-{
-	m_inner_context = context;
-	return 0;
-}
 
-void * connection::get_inner_context()
-{
-	return m_inner_context;
-}
-	
 time_t connection::get_alive_time()
 {
 	return m_alive_time;
 }
 
-int connection::set_alive_time(time_t tick)
+void connection::set_alive_time(time_t tick)
 {
 	m_alive_time = tick;
-	return 0;
 }
 
 bool connection::connected(){
 	return m_status == kconnected;
 }
 
+list_node * connection::get_list_node(){
+	return m_list_node;
+}
+	
+void connection::set_list_node(list_node * ln){
+	m_list_node = ln;
+}
+	
 int connection::init()
 {
 	m_events= EPOLLIN | EPOLLET | EPOLLPRI;

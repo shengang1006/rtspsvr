@@ -5,6 +5,7 @@
 #include <sys/resource.h>
 #include <signal.h> 
 #include "server.h"
+#include "log.h"
 
 server::server()
 {
@@ -46,11 +47,12 @@ int server::run()
 		if (res == -1)
 		{
 			printf_t("error: epoll_wait error(%d %s)\n", errno, strerror(errno));
-			if (errno != EINTR) 
-			{
-				return -1;
+			if (errno != EINTR){
+				break;
 			}
-			continue;
+			else{
+				continue;
+			}
 		}
 		
 		if(timeout == 0){
@@ -206,63 +208,55 @@ int server::packet_dispatch(connection * n)
 int server::check_keepalive(evtime * e)
 {
 	time_t cur = time(NULL);
-	connection * n = m_con_list.go_first();
-	while(n)
-	{
-		if(n->get_status() != kconnected)
-		{	
-			n = m_con_list.go_next();
+	
+	for(list_node * pos = m_list.begin(); pos != m_list.end();){
+		
+		connection* n = (connection*)pos->ptr;
+		pos = pos->next;
+		
+		if(n->get_status() != kconnected){	
 			continue;
 		}
 		
-		int dis = (int)(cur  - n->get_alive_time());
-		if(dis < m_keepalive_timeout)
-		{
+		int dis = (int)difftime(cur, n->get_alive_time());
+		if(dis < m_keepalive_timeout){
 			break;
 		}
 		printf_t("warn : connection(%d) time out(%d)\n", n->fd(), dis);
-		
-		//fixed 2014-12-26
-		connection * next =  m_con_list.go_next();
 		handle_close(n, timeout_reason);
-		n = next;
 	}
-	m_timer.add(e->id, e->interval, e->ptr);
-	return 0;
+	return m_timer.add(e->id, e->interval, e->ptr);
 }
 
 
 int server::check_invalid_con(evtime * e)
 {
-	connection * n = m_con_list.go_first();
-	while(n)
+	
+	for(list_node * pos = m_list.begin(); pos != m_list.end();)
 	{	
+		connection* n = (connection*)pos->ptr;	
 		if(n->get_status() != kdisconnected)
 		{
 			break;
 		}
 		
-		if(n->get_status() == kdisconnected && n->expired())
+		pos = pos->next;
+		if(n->expired())
 		{
-			connection * next = m_con_list.go_next();
-			m_con_list.remove(n);
+			m_list.remove(n->get_list_node());
 			delete n;
-			n = next;
-			//printf_t("debug: invalid node delete\n");
+			printf_t("debug: invalid node delete\n");
 		}
-		else{
-			n = m_con_list.go_next();
-		}
+		
 	}
-	m_timer.add(e->id, e->interval, e->ptr);
-	return 0;
+	return m_timer.add(e->id, e->interval, e->ptr);
 }
 
 
 int server::start_connect(evtime * e)
 {
 	connection * n = (connection*)e->ptr;
-	ipaddr peeraddr = n->get_peeraddr();
+	ipaddr &peeraddr = n->get_peeraddr();
 
 	struct sockaddr_in seraddr = {0};
 	seraddr.sin_family = AF_INET; 
@@ -277,21 +271,21 @@ int server::start_connect(evtime * e)
 		{
 			printf_t("error: connect error(%d)\n", errno);
 			n->set_status(kdisconnected);
-			m_con_list.push_front(n);
+			n->set_list_node(m_list.push_front(n));
 			post_tcp_msg(n, ev_connect_fail);
 			return -1;
 		}	
 		n->set_status(kconnecting);
-		m_con_list.push_back(n);
+		n->set_list_node(m_list.push_back(n));	
 	}
 	else
 	{
 		n->set_status(kconnected);
 		n->set_alive_time(time(NULL));
-		m_con_list.push_back(n);			
+		n->set_list_node(m_list.push_back(n));			
 		post_tcp_msg(n, ev_connect_ok);
 	}
-
+	
 	return 0;
 }
 	
@@ -326,16 +320,16 @@ int server::handle_recv(connection * n)
 {
 	packet_buf * p_buf = n->get_recv_buf();		
 	//et mode
-	do 
+	for(;;) 
 	{
-		int len = p_buf->len - p_buf->has;
+		int left = p_buf->len - p_buf->has;
 		
-		if(len <= 0){
+		if(left <= 0){
 			printf_t("error: packet too large\n");
 			break;
 		}
 		
-		int recv_bytes  = recv(n->fd(), p_buf->buf + p_buf->has, len, 0);
+		int recv_bytes  = recv(n->fd(), p_buf->buf + p_buf->has, left, 0);
 	
 		if(recv_bytes < 0)
 		{	
@@ -361,14 +355,14 @@ int server::handle_recv(connection * n)
 			return -1;
 		}
 		
-		m_con_list.move_to_back(n);
+		m_list.move_tail(n->get_list_node());
 			
-		if(len != recv_bytes)
+		if(recv_bytes < left)
 		{
-			break;
+			return 0;
 		}
 		
-	} while (true);	
+	}
 	return 0;
 }
 
@@ -387,7 +381,7 @@ int server::handle_connect(connection * n)
 	
 	n->set_alive_time(time(NULL));
 	n->set_status(kconnected);		
-	m_con_list.move_to_back(n);
+	m_list.move_tail(n->get_list_node());
 	post_tcp_msg(n, ev_connect_ok);
 	
 	printf_t("debug: connect ok socket(%d)\n", n->fd());
@@ -412,13 +406,13 @@ int server::handle_close(connection * n,  int reason)
 	if(n->get_status() == kconnected)
 	{
 		n->set_status(kdisconnected);
-		m_con_list.move_to_front(n);
+		m_list.move_head(n->get_list_node());
 		post_tcp_msg(n, ev_close, &reason, sizeof(reason));
 	}
 	else if(n->get_status() == kconnecting)
 	{
 		n->set_status(kdisconnected);
-		m_con_list.move_to_front(n);
+		m_list.move_head(n->get_list_node());
 		post_tcp_msg(n, ev_connect_fail);
 	}
 	else
@@ -461,7 +455,7 @@ int server::handle_accept()
 		n->set_status(kconnected);
 		n->set_peeraddr(peeraddr);
 		n->set_alive_time(cur);
-		m_con_list.push_back(n);
+		n->set_list_node(m_list.push_back(n));
 		post_tcp_msg(n, ev_accept);
 		
 		ipaddr &paddr = n->get_peeraddr();

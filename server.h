@@ -1,12 +1,8 @@
 #pragma once
 #include "app.h"
 #include "timer.h"
-#include "conlist.h"
-#include "log.h"
 
 #define max_app_num     16
-#define max_udp_len     (2<<16) //64k
-
 /*
 */
 
@@ -87,7 +83,7 @@ private:
 	int m_last_app;
 	timer m_timer;
 	int m_keepalive_timeout;
-	con_list m_con_list;
+	tlist m_list;
 };
 
 
