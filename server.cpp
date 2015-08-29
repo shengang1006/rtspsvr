@@ -119,64 +119,19 @@ int server::get_tcp_port()
 	return 	m_listen_port;
 }
 	
-
-/*
-void* ptr;     //消息节点，可以为空
-	int appid;
-	int from;  
-	int event;      //消息
-	int length;     //消息长度 
-	char* content;  //消息内容
-*/
-int server::post_msg(int appid, hd_app * temp)
-{
-	if(appid < 0 || appid >= m_app_num)
-	{
-		printf_t("error: appid error\n");
-		return -1;
-	}
-	
-	app * a = m_apps[appid];
-	if(!a)
-	{
-		printf_t("error: no app bind\n");
-		return -1;
-	}
-	
-	//md by 2015-1-20
-	hd_app * msg = (hd_app*)malloc(sizeof(hd_app) + temp->length + 1);
-	if(!msg)
-	{
-		printf_t("error: malloc %d bytes fail, error(%d)\n", sizeof(hd_app) + temp->length + 1, errno);
-		return -1;
-	}
-	memcpy(msg, temp, sizeof(hd_app));
-	
-	if(temp->length){
-		msg->content = (char*)msg + sizeof(hd_app) ;
-		memcpy(msg->content, temp->content, temp->length);
-		msg->content[temp->length] = 0;	//add by 2015-1-20
-	}
-	
-	if(a->push(msg) < 0)
-	{
-		int total = a->increase_drop_msg();
-		free(msg);	
-		printf_t("error: drop msg count(%d)\n", total);
-		return -1;
-	}
-	return 0;
-}
-
 int server::post_app_msg(int dst, int event, void * content, int length)
 {
+	if(dst < 0 || dst >= m_app_num){
+		printf_t("error: appid(%d) error\n", dst);
+		return -1;
+	}
 	hd_app  msg = {0};
 	msg.event = event;
 	msg.content = (char*)content;
 	msg.length = length;
 	msg.type = app_type;
 
-	return post_msg(dst, &msg);
+	return m_apps[dst]->push(msg);
 }
 
 int server::post_tcp_msg(connection * n, int event, void * content, int length)
@@ -187,7 +142,7 @@ int server::post_tcp_msg(connection * n, int event, void * content, int length)
 	msg.length = length;
 	msg.type = tcp_type;
 	msg.u.tcp.n = n;
-	return post_msg(n->get_appid(), &msg);
+	return m_apps[n->get_appid()]->push(msg);
 }
 
 int server::post_timer_msg(evtime * e)
@@ -197,7 +152,7 @@ int server::post_timer_msg(evtime * e)
 	msg.type = timer_type;
 	msg.u.timer.ptr = e->ptr;
 	msg.u.timer.interval = e->interval;
-	return post_msg(e->appid, &msg);
+	return m_apps[e->appid]->push(msg);
 }
 
 int server::get_appid()

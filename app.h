@@ -8,10 +8,10 @@ enum{log_info = 0, log_debug, log_warn, log_error, log_none};
 struct hd_app{
 	
 	int type;     
-	int event;      //消息
-	char * content;
+	int event;      
 	int length;     //消息长度 
-	
+	char* content;  //消息
+		
 	union{
 		struct hd_tcp{
 			connection * n;
@@ -44,8 +44,7 @@ public:
 	virtual ~app();
 	
 	int create(int appid, int msg_cout, const char * app_name);
-	int push(hd_app * msg);
-	int increase_drop_msg();
+	int push(const hd_app & msg);
 	const char * name();
 	int get_appid();	
 	int add_timer(int id, int interval, void * context = NULL);

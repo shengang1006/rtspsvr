@@ -104,28 +104,35 @@ int app::get_appid()
 	return m_appid;
 }
 
-int  app::push(hd_app * msg)
+int  app::push(const hd_app & temp)
 {
-	connection * n  = NULL;
-	if(msg->type == tcp_type)
-	{
-		n = msg->u.tcp.n;
-		n->add_ref();
+	//md by 2015-1-20
+	hd_app * msg = (hd_app*)malloc(sizeof(hd_app) + temp.length + 1);
+	if(!msg){
+		printf_t("error: malloc %d bytes fail, error(%d)\n", sizeof(hd_app) + temp.length + 1, errno);
+		return -1;
+	}
+	memcpy(msg, &temp, sizeof(hd_app));
+	
+	if(temp.length){
+		msg->content = (char*)msg + sizeof(hd_app) ;
+		memcpy(msg->content, temp.content, temp.length);
+		msg->content[temp.length] = 0;	//add by 2015-1-20
 	}
 	
-	int res =  m_ring_buf.push(msg);
+	if(msg->type == tcp_type){
+		msg->u.tcp.n->add_ref();
+	}
 	
-	if(res < 0 && n)
-	{
-		n->release_ref();
+	if(m_ring_buf.push(msg) < 0){
+		if(msg->type == tcp_type){
+			msg->u.tcp.n->release_ref();
+		}
+		printf_t("error: drop msg count(%d)\n", ++m_drop_msg);
+		return -1;
 	}
 
-	return res;
-}
-
-int app::increase_drop_msg()
-{
-	return ++m_drop_msg;
+	return 0;
 }
 
 const char * app::name()

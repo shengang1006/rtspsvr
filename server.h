@@ -64,8 +64,6 @@ protected:
 	
 	int packet_dispatch(connection * n);
 	
-	int post_msg(int dst, hd_app * msg);
-	
 	int post_tcp_msg(connection * n, int event, void * content = NULL, int length = 0);
 	
 	int post_timer_msg(evtime * e);
