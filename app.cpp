@@ -45,6 +45,7 @@ int app::run()
 					
 				case ev_close:
 					on_close(msg->u.tcp.n, *((int*)msg->content));
+					delete msg->u.tcp.n;
 					break;
 					
 				case ev_accept:
@@ -52,11 +53,15 @@ int app::run()
 					break;
 					
 				case ev_connect_ok:
+					on_connect(msg->u.tcp.n);
+					break;
+					
 				case ev_connect_fail:
 					on_connect(msg->u.tcp.n);
+					delete msg->u.tcp.n;
 				break;
+				
 			}
-			msg->u.tcp.n->release_ref();
 		}
 		else if(msg->type == timer_type)
 		{
@@ -118,17 +123,11 @@ int  app::push(const hd_app & temp)
 		memcpy(msg->content, temp.content, temp.length);
 		msg->content[temp.length] = 0;	
 	}
-	
-	if(msg->type == tcp_type){
-		msg->u.tcp.n->add_ref();
-	}
+
 	
 	if(m_ring_buf.push(msg) < 0){
-		if(msg->type == tcp_type){
-			msg->u.tcp.n->release_ref();
-		}
-    free(msg);
-		printf_t("error: drop msg count(%d)\n", ++m_drop_msg);
+		printf_t("error: drop msg total(%d)\n", ++m_drop_msg);
+		free(msg);
 		return -1;
 	}
 

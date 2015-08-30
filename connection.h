@@ -50,7 +50,7 @@ protected:
 	void set_peeraddr(const ipaddr & addr);
 	void set_peeraddr(const struct sockaddr_in & addr);
 	
-	void set_alive_time(time_t & tick);
+	void set_alive_time(time_t tick);
 
 	int get_status();
 	int set_status(int status);

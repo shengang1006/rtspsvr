@@ -4,16 +4,14 @@
  *	it is thread safe
  */
 
-timer::timer()
-{
+timer::timer(){
 	m_max_heap_size = 0;
 	m_cur_heap_size = 0;
 	m_ppevtime = NULL;
 	m_precision = 1000;
 }
 
-timer::~timer()
-{
+timer::~timer(){
 	release();
 }
 
@@ -21,11 +19,10 @@ timer::~timer()
  *	init the time item
  *  it is thread safe
  */
-int timer::init(int precision)
-{
+int timer::init(int precision){
+	
 	auto_lock __lock(m_mutex);
-
-		if (m_max_heap_size){
+	if (m_max_heap_size){
 		printf_t("error: timer already init %d\n", m_max_heap_size);
 		return -1;
 	}
@@ -50,17 +47,15 @@ int timer::init(int precision)
  *	destroy the time item
  *  it is thread safe
  */
-int timer::release()
-{
+int timer::release(){
+	
 	auto_lock __lock(m_mutex);
 
-	for(int k = 0; k< m_cur_heap_size; k++)
-	{
+	for(int k = 0; k< m_cur_heap_size; k++){
 		delete m_ppevtime[k];
 	}
 	
-	if(m_ppevtime)
-	{
+	if(m_ppevtime){
 		free(m_ppevtime);
 		m_ppevtime = NULL;
 	}
@@ -71,24 +66,21 @@ int timer::release()
 	return 0;
 }
 
-int timer::add(int id, int interval, void* context, int appid)
-{
+int timer::add(int id, int interval, void* context, int appid){
+	
 	auto_lock __lock(m_mutex);
 
-	if (interval < 0)
-	{
+	if (interval < 0){
 		return -1;
 	}
 
 	//save id
-	if (m_max_heap_size == m_cur_heap_size)
-	{
+	if (m_max_heap_size == m_cur_heap_size){
 		m_max_heap_size = m_max_heap_size ? m_max_heap_size * 2 : 8;
 		m_ppevtime = (evtime**)realloc(m_ppevtime, sizeof(evtime*) * m_max_heap_size);
 	}
 
-	if (!m_ppevtime)
-	{
+	if (!m_ppevtime){
 		printf_t("error: realloc memory for evtime\n");
 		return -1;
 	}
@@ -109,22 +101,18 @@ int timer::add(int id, int interval, void* context, int appid)
  *	remove the time item
  *  it is thread safe
  */
-int timer::remove(evtime* e)
-{	
+int timer::remove(evtime* e){	
+
 	auto_lock __lock(m_mutex);
 	
 	int res = -1;
-
-	if (e->index != -1 && m_cur_heap_size)
-	{
+	if (e->index != -1 && m_cur_heap_size){
 		evtime * last = m_ppevtime[--m_cur_heap_size];
 		int parent = (e->index - 1) >> 1;
-		if (e->index > 0 && compare(m_ppevtime[parent], last) > 0)
-		{
+		if (e->index > 0 && compare(m_ppevtime[parent], last) > 0){
 			min_heap_adjust_up(e->index, last);
 		}
-		else
-		{
+		else{
 			min_heap_adjust_down(e->index, last);
 		}
 		res =  0;
@@ -137,12 +125,10 @@ int timer::remove(evtime* e)
  *	pop the front item
  *  it is thread safe
  */
-int timer::pop_timeout(evtime & ev)
-{
+int timer::pop_timeout(evtime & ev){
+	
 	auto_lock __lock(m_mutex);
-
-	if(!m_cur_heap_size)
-	{	
+	if(!m_cur_heap_size){	
 		return -1;
 	}
 	
@@ -150,14 +136,12 @@ int timer::pop_timeout(evtime & ev)
 	evtime * e = m_ppevtime[0];
 	int  timeout = (int)(e->timeout - cur);
 	
-	if(timeout <= 0)
-	{
+	if(timeout <= 0){
 		min_heap_adjust_down(0, m_ppevtime[--m_cur_heap_size]);
 		memcpy(&ev, e, sizeof(ev));
 		delete e;	
 		return 0;
-	}
-		
+	}	
 	return -1;
 }
 
@@ -166,8 +150,8 @@ int timer::pop_timeout(evtime & ev)
  *	get the first item timeout
  *  it is thread safe
  */
-int  timer::timeout()
-{
+int  timer::timeout(){
+	
 	auto_lock __lock(m_mutex);
 	if(!m_cur_heap_size){
 		return m_precision;
@@ -185,12 +169,10 @@ int  timer::timeout()
 	}
 }
 
-int timer::min_heap_adjust_up(int holeindex, evtime * e)
-{
+int timer::min_heap_adjust_up(int holeindex, evtime * e){
 
 	int parent = (holeindex - 1) / 2;
-	while(holeindex && compare(m_ppevtime[parent], e) > 0)
-	{
+	while(holeindex && compare(m_ppevtime[parent], e) > 0){
 		(m_ppevtime[holeindex] = m_ppevtime[parent])->index = holeindex;
 		holeindex = parent;
 		parent = (holeindex - 1) / 2;
@@ -200,15 +182,12 @@ int timer::min_heap_adjust_up(int holeindex, evtime * e)
 	return holeindex;
 }
 
-int timer::min_heap_adjust_down(int holeindex, evtime * e)
-{
+int timer::min_heap_adjust_down(int holeindex, evtime * e){
 
 	int minchild = (holeindex + 1) << 1;
-	while(minchild <= m_cur_heap_size)
-	{
+	while(minchild <= m_cur_heap_size){
 		minchild -= (minchild == m_cur_heap_size) || (compare(m_ppevtime[minchild], m_ppevtime[minchild-1]) > 0);
-		if (compare(e, m_ppevtime[minchild]) <= 0)
-		{
+		if (compare(e, m_ppevtime[minchild]) <= 0){
 			break;
 		}
 		(m_ppevtime[holeindex] = m_ppevtime[minchild])->index = holeindex;

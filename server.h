@@ -26,8 +26,6 @@ public:
 	
 	int init_log(const char* path, const char * name, int max_size = 8<<20);
 	
-	int set_keepalive(int timeout);
-	
 	int register_app(app * a, int msg_count, const char * name);
 	
 	int add_timer(int id, int interval, int appid, void * context = NULL);
@@ -44,6 +42,7 @@ public:
 	
 	int get_tcp_port();
 	
+	void set_keepalive(int timeout);
 protected:
 	
 	int run();
@@ -66,11 +65,11 @@ protected:
 
 	int handle_connect(connection * n);
 	
-	int check_keepalive(evtime * e);
+	int timer_keepalive(evtime * e);
 	
-	int check_invalid_con(evtime * e);
+	int timer_connect(evtime * e);
 	
-	int start_connect(evtime * e);
+	int timer_active(evtime*e);
 
 	int allot_appid();
 private:
@@ -82,7 +81,7 @@ private:
 	int m_app_num;
 	int m_last_app;
 	timer m_timer;
-	int m_keepalive_timeout;
+	int m_keepalive;
 	tlist m_list;
 };
 

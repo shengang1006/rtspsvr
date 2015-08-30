@@ -34,9 +34,8 @@ enum
 { 
 
 	ev_timer_active = 0, //激活 定时器
-	ev_con_keepalive,    //心跳检测 定时器
-	ev_con_clear,        //清楚无效节点 定时器
-	ev_con_connect,      //连接 定时器
+	ev_timer_keepalive,    //心跳检测 定时器
+	ev_timer_connect,      //连接 定时器
  
    	ev_connect_ok,       //连接成功
 	ev_connect_fail,     //连接失败

@@ -1,5 +1,4 @@
 #pragma once
-
 #include "connection.h"
 
 enum{tcp_type = 0, app_type, timer_type};

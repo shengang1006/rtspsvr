@@ -4,56 +4,48 @@
 #include<sys/stat.h>
 
 /********************************************************/
-auto_mutex::auto_mutex()
-{
+auto_mutex::auto_mutex(){
 	pthread_mutex_init(&m_mutex, NULL);
 }
-auto_mutex::~auto_mutex()
-{
+
+auto_mutex::~auto_mutex(){
 	pthread_mutex_destroy(&m_mutex);
 }
 
-void auto_mutex::lock()
-{
+void auto_mutex::lock(){
 	pthread_mutex_lock(&m_mutex);
 }
 
-void auto_mutex::unlock()
-{
+void auto_mutex::unlock(){
 	pthread_mutex_unlock(&m_mutex);
 }
 
 
 auto_lock::auto_lock(auto_mutex & mutex)
-	:m_mutex(mutex)
-{
+	:m_mutex(mutex){
 	m_mutex.lock();
 }
-auto_lock::~auto_lock()
-{
+auto_lock::~auto_lock(){
 	m_mutex.unlock();
 }
 
 
 /********************************************************/
-ring_buffer::ring_buffer()
-{
+ring_buffer::ring_buffer(){
 	m_buf = NULL;
 	m_size = 0;
 	m_read = 0;
 	m_write = 0;
 }
 
-ring_buffer::~ring_buffer()
-{
-	if(m_buf)
-	{
+ring_buffer::~ring_buffer(){
+	
+	if(m_buf){
 		free(m_buf);
 		m_buf = NULL;
 	}
 	
-	if(sem_destroy(&m_hsem) == -1)
-	{
+	if(sem_destroy(&m_hsem) == -1){
 		printf_t("error: sem_destroy error(%d)\n", errno);
 	}
 	m_size = 0;
@@ -61,14 +53,13 @@ ring_buffer::~ring_buffer()
 	m_write = 0;
 }
 
-int ring_buffer::create(int size)
-{	
-	if(m_buf)
-	{
+int ring_buffer::create(int size){	
+
+	if(m_buf){
 		return -1;
 	}
-	if(sem_init(&m_hsem, 0, 0) == -1)
-	{
+	
+	if(sem_init(&m_hsem, 0, 0) == -1){
 		printf_t("error: sem_init error(%d)\n", errno);
 		return -1;
 	}
@@ -83,23 +74,19 @@ int ring_buffer::create(int size)
 	return 0;
 }
 
-int ring_buffer::push(void* data)
-{
-	if(!m_size)
-	{
+int ring_buffer::push(void* data){
+	
+	if(!m_size){
 		return -1;
 	}
 	
 	{
 		auto_lock __lock(m_w_mutex);
-		if(m_buf[m_write])
-		{
+		if(m_buf[m_write]){
 			return -1;
 		}
-		m_buf[m_write] = data;
-			
-		if(++m_write == m_size)
-		{
+		m_buf[m_write] = data;	
+		if(++m_write == m_size){
 			m_write = 0;
 		}
 	}
@@ -108,12 +95,10 @@ int ring_buffer::push(void* data)
 	return 0;
 }
 
-int ring_buffer::pop(void *&data, int msecs)
-{
+int ring_buffer::pop(void *&data, int msecs){
 	
 	int ret = 0;
-	if(msecs >= 0)
-	{
+	if(msecs >= 0){
 		struct timeval now;
 		struct timespec abstime;
 		gettimeofday(&now, NULL);
@@ -144,27 +129,20 @@ int ring_buffer::pop(void *&data, int msecs)
 		return -1;
 	}
 
-	
-	if(!m_size)
-	{
+	if(!m_size){
 		return -1;
 	}
 	
 	data = m_buf[m_read];
-	if(!data)
-	{
+	if(!data){
 		printf_t("error: fatal error data is null\n");
 		return -1;
 	}
 
 	m_buf[m_read] = 0;
-	
-	if(++m_read == m_size)
-	{
+	if(++m_read == m_size){
 		m_read = 0;
 	}
-	
-
 	return 0;
 }
 /********************************************************/
@@ -190,8 +168,7 @@ void *thread_task(void *param){
 	return 0;
 }
 
-int create_thread(pthread_t & tid, thread_fun fun, const char * name, void * param)
-{
+int create_thread(pthread_t & tid, thread_fun fun, const char * name, void * param){
 
 	//struct sched_param tparam;	
 	//uint stack_size = 512<<10;
@@ -217,11 +194,8 @@ int create_thread(pthread_t & tid, thread_fun fun, const char * name, void * par
 		delete t; //add by 2014/10/3
 		return -1;
 	}
-	
 	pthread_attr_destroy(&attr);
-	
 	return 0;
-	
 }
 
 int create_directory(const char * path, int amode /*= 777*/){
@@ -270,17 +244,15 @@ int make_no_block(int fd)
 	return 0;
 }
 
-int64 get_tick_count()
-{
+int64 get_tick_count(){
 	struct timeval tv = {0};
 	gettimeofday(&tv, NULL);
 	return ((int64)tv.tv_sec * 1000) + tv.tv_usec/1000;
 }
 
-int printf_t(const char * format,...)
-{
-	const int printf_max = 1024;
+int printf_t(const char * format,...){
 	
+	const int printf_max = 1024;
 	char ach_msg[printf_max] = {0};
 	
 	time_t cur = time(NULL);
@@ -302,11 +274,9 @@ int printf_t(const char * format,...)
 	va_list pv_list;
     va_start(pv_list, format);	
     vsnprintf(ach_msg + nlen, nsize, format, pv_list);  
-    va_end(pv_list);
-		
+    va_end(pv_list);	
 	printf(ach_msg);
 	fflush(stdout);
-	
 	return 0;
 }
 
