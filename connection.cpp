@@ -30,7 +30,7 @@ void release_packet_buf(packet_buf & s)
 	s.len = 0;
 }
 
-void inet_ntoa_convert(ipaddr & dst, struct sockaddr_in & addr)
+void inet_ntoa_convert(ipaddr & dst, const struct sockaddr_in & addr)
 {
 	unsigned char *p = (unsigned char*)&addr.sin_addr;
 	sprintf(dst.ip,"%d.%d.%d.%d", p[0], p[1], p[2], p[3]);
@@ -58,20 +58,7 @@ connection::connection(int epfd, int fd)
 
 connection::~connection()
 {
-	if(m_fd >= 0)
-	{
-		close(m_fd);
-		m_fd = -1;
-	}
-	m_appid = 0;
-	m_epfd = -1;
-	m_context = NULL;
-	m_list_node = NULL;		
-	m_events = EPOLLNONE;
-	m_status = kdisconnected;
-	m_operation = kdel;
-	m_ref = 0;
-	m_alive_time = 0;
+	release();
 }
 
 int connection::fd()
@@ -89,12 +76,12 @@ ipaddr& connection::get_localaddr()
 	return m_localaddr;
 }
 
-void connection::set_peeraddr(ipaddr & addr)
+void connection::set_peeraddr(const ipaddr & addr)
 {
 	m_peeraddr = addr;
 }
 
-void connection::set_peeraddr(struct sockaddr_in & addr)
+void connection::set_peeraddr(const struct sockaddr_in & addr)
 {
 	inet_ntoa_convert(m_peeraddr , addr);
 }
@@ -155,7 +142,7 @@ time_t connection::get_alive_time()
 	return m_alive_time;
 }
 
-void connection::set_alive_time(time_t tick)
+void connection::set_alive_time(time_t &tick)
 {
 	m_alive_time = tick;
 }

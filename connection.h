@@ -47,10 +47,10 @@ protected:
 
 	time_t get_alive_time();
 	
-	void set_peeraddr(ipaddr & addr);
-	void set_peeraddr(struct sockaddr_in & addr);
+	void set_peeraddr(const ipaddr & addr);
+	void set_peeraddr(const struct sockaddr_in & addr);
 	
-	void set_alive_time(time_t tick);
+	void set_alive_time(time_t & tick);
 
 	int get_status();
 	int set_status(int status);
@@ -75,20 +75,20 @@ protected:
 	int m_epfd; 
 	int m_fd;
 	int m_appid;
-	uint m_events;
-	packet_buf m_send_buf;
-	packet_buf m_recv_buf;
-
-	auto_mutex m_mutex;
-	
-	void* m_context;
-	ipaddr m_peeraddr;
-	ipaddr m_localaddr;
-	
+	int m_events;
 	int m_operation;
 	int m_status;
 	int m_ref;
-	
 	time_t m_alive_time;
+		
+	packet_buf m_send_buf;
+	packet_buf m_recv_buf;
+
+	ipaddr m_peeraddr;
+	ipaddr m_localaddr;
+		
+	void* m_context;
 	list_node * m_list_node;
+
+	auto_mutex m_mutex;	
 };
