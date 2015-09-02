@@ -22,7 +22,6 @@
 
 #define max_app_name 16
 
-
 typedef unsigned int uint;
 typedef unsigned short ushort;
 typedef uint64_t uint64;
@@ -30,8 +29,7 @@ typedef int64_t  int64;
 typedef void* (*thread_fun)(void * param);
 typedef intptr_t intptr;
 
-enum
-{ 
+enum{ 
 
 	ev_timer_active = 0, //激活 定时器
 	ev_timer_keepalive,    //心跳检测 定时器
@@ -46,50 +44,37 @@ enum
 	ev_system_end,   
 };
 
-struct ipaddr
-{
+struct ipaddr{
 	char ip[INET_ADDRSTRLEN];//INET_ADDRSTRLEN = 16
 	ushort port;
 };
 
-class auto_mutex
-{
+class auto_mutex{
 public:
-	auto_mutex();
-	
+	auto_mutex();	
 	~auto_mutex();
-	
 	void lock();
-	
 	void unlock();
-	
 private:
 	pthread_mutex_t m_mutex;
 };
 
-class auto_lock
-{
+class auto_lock{
 public:
-	auto_lock(auto_mutex & mutex);
-		
+	auto_lock(auto_mutex & mutex);	
 	~auto_lock();
-	
 private:
 	auto_mutex m_mutex;
 };
 
 
-class ring_buffer
-{
+class ring_buffer{
+	
 public:
-	ring_buffer();
-	
-	virtual~ring_buffer();
-	
+	ring_buffer();	
+	virtual~ring_buffer();	
 	int create(int size);
-	
-	int push(void* data);
-	
+	int push(void* data);	
 	int pop(void *&data, int timeout = -1);
 	
 protected:
@@ -110,4 +95,8 @@ int make_no_block(int fd);
 
 int64 get_tick_count();
 
-int printf_t(const char * format,...);
+/*system simple log*/
+int sys_log(FILE * fd, const char *format,...);
+#define error_log(format, ...) sys_log (stderr, "%s[%d]: error: "format"", __func__, __LINE__, ## __VA_ARGS__)
+#define debug_log(format, ...) sys_log (stdout, "%s[%d]: debug: "format"", __func__, __LINE__, ## __VA_ARGS__)
+#define warn_log(format, ...)  sys_log (stderr, "%s[%d]: warn: "format"", __func__, __LINE__,  ## __VA_ARGS__)

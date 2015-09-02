@@ -152,7 +152,7 @@ int connection::init(){
 		inet_ntoa_convert(m_localaddr, localaddr);
 	}
 	else{
-		printf_t("error: getsockname error(%d)\n", errno);
+		error_log("getsockname error(%d)\n", errno);
 	}
 	return ret;
 }
@@ -182,7 +182,7 @@ int connection::disable_writing(){
 		return update();
 	}
 	else{
-		printf_t("warn : already disable_writing socket(%d)\n", m_fd);
+		warn_log("already disable_writing socket(%d)\n", m_fd);
 	}
 	return 0;
 }
@@ -195,7 +195,7 @@ int connection::enable_writing(){
 		return update();
 	}
 	else{
-		printf_t("warn : already enable_writing socket(%d)\n", m_fd);
+		warn_log("already enable_writing socket(%d)\n", m_fd);
 	}
 	return 0;
 }
@@ -220,7 +220,7 @@ int connection::update(){
 	}
 	
 	if(ret < 0){
-		printf_t("error: update events error %d socket(%d)\n", errno, m_fd);	
+		error_log("update events error %d socket(%d)\n", errno, m_fd);	
 	}
 	return ret;
 }
@@ -230,9 +230,8 @@ int connection::add_ref(){
 }
 	
 int connection::release_ref(){
-	if(__sync_fetch_and_sub(&m_ref, 1) == 0)
-	{
-		printf_t("error: memory leak\n");
+	if(__sync_fetch_and_sub(&m_ref, 1) == 0){
+		error_log("memory leak\n");
 		return -1;
 	}
 	return 0;
@@ -246,9 +245,8 @@ int connection::set_tcp_no_delay(bool val){
 	
 	int optVal = val ? 1: 0;
 	int res = setsockopt(m_fd, IPPROTO_TCP, TCP_NODELAY ,(char*) &optVal, sizeof(optVal));
-	if(res < 0)
-	{
-		printf_t("error: set set_tcp_no_delay error(%d)\n", errno);
+	if(res < 0){
+		error_log("set set_tcp_no_delay error(%d)\n", errno);
 	}
 	return res;
 }
@@ -256,7 +254,7 @@ int connection::set_tcp_no_delay(bool val){
 int connection::post_send(){
 	
 	if(!m_events){
-		printf_t("warn : post send already closed socket(%d)\n", m_fd);
+		warn_log("post send already closed socket(%d)\n", m_fd);
 		return -1;
 	}
 	
@@ -264,7 +262,7 @@ int connection::post_send(){
 	
 	int len = m_send_buf.has;
 	if(len == 0){
-		printf_t("debug: post send no data socket(%d)\n", m_fd);
+		debug_log("post send no data socket(%d)\n", m_fd);
 		return 0;
 	}
 
@@ -274,7 +272,7 @@ int connection::post_send(){
 		int sent = ::send(m_fd, m_send_buf.buf + total , len - total, 0);
 		if(sent  < 0 ){
 			if(errno != EINTR && errno != EAGAIN){
-				printf_t("error: post send error(%d) socket(%d)\n", errno, m_fd);
+				error_log("post send error(%d) socket(%d)\n", errno, m_fd);
 				return -1;
 			}
 			else{
@@ -285,7 +283,7 @@ int connection::post_send(){
 		
 	}while(total < len);
 	
-	//printf_t("debug: post_send send %d/%d\n", total, len);
+	//debug_log("debug: post_send send %d/%d\n", total, len);
 	
 	m_send_buf.has = len - total;
 	if(!m_send_buf.has){
@@ -305,16 +303,16 @@ int connection::post_send(char * data, int len){
 	}
 	
 	if(!m_events){
-		printf_t("warn : post_send already closed socket(%d)\n", m_fd);
+		warn_log("post_send already closed socket(%d)\n", m_fd);
 		return -1;
 	}
 	
 	auto_lock __lock(m_mutex);
 	int has = m_send_buf.has;
 	if(has){
-		printf_t("debug: has left %d bytes, socket(%d)\n", has + 1, m_fd);
+		debug_log("has left %d bytes, socket(%d)\n", has + 1, m_fd);
 		if(has + len > m_send_buf.len){
-			printf_t("warn : buffer overflow socket(%d)\n", m_fd);
+			warn_log("buffer overflow socket(%d)\n", m_fd);
 			return -1;
 		}
 		else{
@@ -329,19 +327,19 @@ int connection::post_send(char * data, int len){
 		int sent = ::send(m_fd, data + total, len - total, 0);
 		if(sent < 0){
 			if(errno != EINTR && errno != EAGAIN){
-				printf_t("error: post_send error(%d) socket(%d)\n", errno, m_fd);
+				error_log("post_send error(%d) socket(%d)\n", errno, m_fd);
 				return -1;
 			}
 			else{
 				//push into send buf
 				if(init_packet_buf(m_send_buf, send_buf_len) < 0){
-					printf_t("error: post_send init_packet_buf error(%d)\n", errno);
+					error_log("post_send init_packet_buf error(%d)\n", errno);
 					return -1;
 				}
 				memcpy(m_send_buf.buf + m_send_buf.has, data + total, len - total);
 				m_send_buf.has += len - total;
 				
-				printf_t("warn : send buffer full total %d/%d error(%d %s) socket(%d) \n", 
+				warn_log("send buffer full total %d/%d error(%d %s) socket(%d) \n", 
 				total, len, errno, strerror(errno), m_fd);
 				
 				enable_writing();

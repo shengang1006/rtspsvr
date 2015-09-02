@@ -1,8 +1,8 @@
 #pragma once
 #include "utility.h"
 
-struct evtime
-{
+struct evtime{
+	
 	int id;         //定时id
 	int appid;      //appid
 	int interval;   //定时器间隔
@@ -15,8 +15,8 @@ struct evtime
 /*
  *	it is thread safe
  */
-class timer
-{
+class timer{
+	
 public:
 
 	timer();

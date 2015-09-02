@@ -1,12 +1,10 @@
 #pragma once
-
 #include "tlist.h"
-
 
 #define recv_buf_len    64 * 1024
 #define send_buf_len    128 * 1024
-struct packet_buf
-{
+
+struct packet_buf{
 	char *buf;    //包缓冲区
 	int has;      //缓冲区数据位置
 	int len;      //缓冲区大小
@@ -16,8 +14,8 @@ enum{knew,kadd,kdel};
 enum{kconnected, kconnecting, kdisconnected};
 enum{recv_reason, write_reason, timeout_reason, error_reason};
 	
-class connection
-{
+class connection{
+	
 public:
 	connection(int epfd, int fd);
 	
@@ -39,17 +37,16 @@ public:
 	int release_ref();
 	bool expired();
 	
-	int get_appid();
-	void set_appid(int appid);
-
 	bool connected();
 protected:
 
-	time_t get_alive_time();
-	
 	void set_peeraddr(const ipaddr & addr);
 	void set_peeraddr(const struct sockaddr_in & addr);
 	
+	int  get_appid();
+	void set_appid(int appid);
+	
+	time_t get_alive_time();
 	void set_alive_time(time_t tick);
 
 	int get_status();
@@ -58,8 +55,7 @@ protected:
 	list_node * get_list_node();
 	void set_list_node(list_node * ln);
 	
-	packet_buf * get_recv_buf();
-	
+	packet_buf * get_recv_buf();	
 	int post_send();
 	
 	friend class server;	

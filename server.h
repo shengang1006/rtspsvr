@@ -6,8 +6,8 @@
 /*
 */
 
-class server
-{
+class server{
+	
 private:
 	server();
 	server(const server &);  
@@ -15,7 +15,6 @@ private:
 	
 public:
 	static server * instance();
-	
 	virtual ~server();
 	
 	int init();
@@ -23,9 +22,7 @@ public:
 	int create_tcp_server(ushort port, int reuse = 1);
 		
     int loop();
-	
-	int init_log(const char* path, const char * name, int max_size = 8<<20);
-	
+		
 	int register_app(app * a, int msg_count, const char * name);
 	
 	int add_timer(int id, int interval, int appid, void * context = NULL);

@@ -1,43 +1,35 @@
 #include "app.h"
 #include "server.h"
-#include "log.h"
-/*app class*/
 
-app::app()
-{
+app::app(){
 	m_brun = false;
 	m_drop_msg = 0;
 	m_appid = 0;
 	memset(m_name, 0, sizeof(m_name));
 }
 
-app::~app()
-{
+app::~app(){
 	m_brun = false;
 	m_drop_msg = 0;
 }
 
-void * app::app_run(void* param)
-{
+void * app::app_run(void* param){
 	app * s = (app*)param;
 	s->run();
 	return 0;
 }
 	
-int app::run()
-{
-	while(m_brun)
-	{
+int app::run(){
+	
+	while(m_brun){
+		
 		void* data = NULL;
-		if(m_ring_buf.pop(data) == -1)
-		{
+		if(m_ring_buf.pop(data) == -1){
 			continue;
 		}
 		
 		hd_app * msg = (hd_app*)data;
-		
-		if(msg->type == tcp_type)
-		{
+		if(msg->type == tcp_type){
 			switch(msg->event){
 				case ev_recv:
 					on_recv(msg->u.tcp.n, msg->content, msg->length);
@@ -63,29 +55,24 @@ int app::run()
 				
 			}
 		}
-		else if(msg->type == timer_type)
-		{
+		else if(msg->type == timer_type){
 			on_timer(msg->event, msg->u.timer.interval, msg->u.timer.ptr);
 		}
-		else if(msg->type == app_type)
-		{
+		else if(msg->type == app_type){
 			on_app(msg->event, msg->content, msg->length);
 		}
-		else
-		{
-			printf_t("error: msg from unknown app_name(%s)\n", m_name);
+		else{
+			error_log("msg from unknown app_name(%s)\n", m_name);
 		}
-	
 		free(msg);
 	}
 	return 0;
 }
 
-int app::create(int appid, int msg_count, const char * app_name)
-{
-	if(m_ring_buf.create(msg_count) == -1)
-	{
-		printf_t("error: create ring buffer fail\n");
+int app::create(int appid, int msg_count, const char * app_name){
+	
+	if(m_ring_buf.create(msg_count) == -1){
+		error_log("create ring buffer fail\n");
 		return -1;
 	}
 	
@@ -93,9 +80,8 @@ int app::create(int appid, int msg_count, const char * app_name)
 	
 	m_brun = true;
 	pthread_t tid;
-	if(create_thread(tid, app_run, m_name, (void*)this) == -1)
-	{
-		printf_t("error: create_thread fail\n");
+	if(create_thread(tid, app_run, m_name, (void*)this) == -1){
+		error_log("create_thread fail\n");
 		return -1;
 	}
 	
@@ -103,17 +89,15 @@ int app::create(int appid, int msg_count, const char * app_name)
 	return 0;
 }
 
-int app::get_appid()
-{
+int app::get_appid(){
 	return m_appid;
 }
 
-int  app::push(const hd_app & temp)
-{
+int  app::push(const hd_app & temp){
 	
 	hd_app * msg = (hd_app*)malloc(sizeof(hd_app) + temp.length + 1);
 	if(!msg){
-		printf_t("error: malloc %d bytes fail, error(%d)\n", sizeof(hd_app) + temp.length + 1, errno);
+		error_log("malloc %d bytes fail, error(%d)\n", sizeof(hd_app) + temp.length + 1, errno);
 		return -1;
 	}
 	memcpy(msg, &temp, sizeof(hd_app));
@@ -123,24 +107,20 @@ int  app::push(const hd_app & temp)
 		memcpy(msg->content, temp.content, temp.length);
 		msg->content[temp.length] = 0;	
 	}
-
 	
 	if(m_ring_buf.push(msg) < 0){
-		printf_t("error: drop msg total(%d)\n", ++m_drop_msg);
+		error_log("drop msg total(%d)\n", ++m_drop_msg);
 		free(msg);
 		return -1;
 	}
-
 	return 0;
 }
 
-const char * app::name()
-{
+const char * app::name(){
 	return m_name;
 }
 
-int app::add_timer(int id, int interval, void * context)
-{
+int app::add_timer(int id, int interval, void * context){
 	return server::instance()->add_timer(id, interval, m_appid, context);
 }
 
@@ -151,61 +131,10 @@ int app::add_abs_timer(int id, int year, int mon, int day,
 	return server::instance()->add_abs_timer(id, year, mon, day, hour, min, sec, m_appid, context);
 }
 
-int app::post_connect(const char * ip, ushort port, int delay, void * context)
-{
+int app::post_connect(const char * ip, ushort port, int delay, void * context){
 	return server::instance()->post_connect(ip, port, delay, m_appid, context);
 }
 	
-int app::post_app_msg(int dst, int event, void * content, int length)
-{
+int app::post_app_msg(int dst, int event, void * content, int length){
 	return server::instance()->post_app_msg(dst, event, content, length);
 }
-
-int app::log_out(int lev, const char * format,...)
-{
-
-	char ach_msg[max_log_len] = {0};
-	time_t cur = time(NULL);
-	struct tm cur_tm ;
-	localtime_r(&cur, &cur_tm);
-
-	sprintf(ach_msg, 
-		"[%d-%02d-%02d %02d:%02d:%02d]",
-		 cur_tm.tm_year + 1900, 
-		 cur_tm.tm_mon + 1,
-		 cur_tm.tm_mday,
-		 cur_tm.tm_hour,
-		 cur_tm.tm_min, 
-		 cur_tm.tm_sec);
-    
-	char * pos = ach_msg + strlen(ach_msg);
-	switch(lev)
-	{	
-		case log_error: 
-			strcpy(pos, "[error]");
-		break;
-		case log_warn : 
-			strcpy(pos, "[warn]");
-		break;
-		case log_debug: 
-			strcpy(pos, "[debug]");
-		break;
-		case log_info:
-			strcpy(pos, "[info]");
-		break;
-		default:
-			strcpy(pos, "[unknown]");
-		break;
-	}
-	pos += strlen(pos);
-	
-    int nsize = max_log_len - (int)(pos - ach_msg);
-		 	
-    va_list pv_list;
-    va_start(pv_list, format);	
-    vsnprintf(pos, nsize, format, pv_list); 
-    va_end(pv_list);
-	
-	return log::instance()->write_log(ach_msg);
-}
-

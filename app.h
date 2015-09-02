@@ -2,7 +2,6 @@
 #include "connection.h"
 
 enum{tcp_type = 0, app_type, timer_type};
-enum{log_info = 0, log_debug, log_warn, log_error, log_none};
 
 struct hd_app{
 	
@@ -26,10 +25,9 @@ struct hd_app{
 	}u;
 };
 
-class app
-{
+class app{
+	
 public:
-
 	virtual int on_accept(connection * n) = 0;
 	virtual int on_recv(connection * n, char * data, int len) = 0;
 	virtual int on_close(connection * n, int reason) = 0;
@@ -52,13 +50,9 @@ public:
 	int post_connect(const char * ip, ushort port, int delay, void * context = NULL);
 	int post_app_msg(int dst, int event, void * content = NULL, int length = 0);
 	
-	static int log_out(int lev, const char * format,...);	
 private:
-
 	static void * app_run(void* param);
-	
-	int run();
-		
+	int run();		
 private:	
 	ring_buffer m_ring_buf;
 	char m_name[max_app_name + 1];

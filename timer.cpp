@@ -23,7 +23,7 @@ int timer::init(int precision){
 	
 	auto_lock __lock(m_mutex);
 	if (m_max_heap_size){
-		printf_t("error: timer already init %d\n", m_max_heap_size);
+		debug_log("error: timer already init %d\n", m_max_heap_size);
 		return -1;
 	}
 
@@ -31,7 +31,7 @@ int timer::init(int precision){
 	m_ppevtime = (evtime**)malloc(sizeof(evtime*) * init_size);
 
 	if (!m_ppevtime){
-		printf_t("error: malloc memory for evtime\n");
+		debug_log("error: malloc memory for evtime\n");
 		return -1;
 	}
 
@@ -81,7 +81,7 @@ int timer::add(int id, int interval, void* context, int appid){
 	}
 
 	if (!m_ppevtime){
-		printf_t("error: realloc memory for evtime\n");
+		debug_log("error: realloc memory for evtime\n");
 		return -1;
 	}
 

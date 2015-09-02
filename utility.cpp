@@ -46,7 +46,7 @@ ring_buffer::~ring_buffer(){
 	}
 	
 	if(sem_destroy(&m_hsem) == -1){
-		printf_t("error: sem_destroy error(%d)\n", errno);
+		error_log("sem_destroy error(%d)\n", errno);
 	}
 	m_size = 0;
 	m_read = 0;
@@ -60,7 +60,7 @@ int ring_buffer::create(int size){
 	}
 	
 	if(sem_init(&m_hsem, 0, 0) == -1){
-		printf_t("error: sem_init error(%d)\n", errno);
+		error_log("sem_init error(%d)\n", errno);
 		return -1;
 	}
 	
@@ -124,7 +124,7 @@ int ring_buffer::pop(void *&data, int msecs){
 				
 	if(ret < 0){
 		if(errno != ETIMEDOUT){
-			printf_t("sem_timedwait/sem_wait error(%d)\n", errno);
+			error_log("sem_timedwait/sem_wait error(%d)\n", errno);
 		}	
 		return -1;
 	}
@@ -135,7 +135,7 @@ int ring_buffer::pop(void *&data, int msecs){
 	
 	data = m_buf[m_read];
 	if(!data){
-		printf_t("error: fatal error data is null\n");
+		error_log("fatal error data is null\n");
 		return -1;
 	}
 
@@ -217,7 +217,7 @@ int create_directory(const char * path, int amode /*= 777*/){
 			dirname[i] = 0;
 			if (access(dirname, 0)){
 				if (mkdir(dirname, amode) < 0){
-					printf_t("mkdir error(%d)\n", errno);
+					error_log("mkdir error(%d)\n", errno);
 					return -1;
 				}
 			}
@@ -232,12 +232,12 @@ int make_no_block(int fd)
 {
 	int nFlags = fcntl(fd, F_GETFL, 0);
 	if (nFlags < 0){
-		printf_t("error: fcnt getfl error(%d)\n", errno);
+		error_log("fcnt getfl error(%d)\n", errno);
 		return -1;
 	}
 	
 	if (fcntl(fd, F_SETFL, nFlags|O_NONBLOCK) < 0){
-		printf_t("error: fcnt setfl error(%d)\n", errno);
+		error_log("fcnt setfl error(%d)\n", errno);
 		return -1;
 	}
 	
@@ -250,34 +250,24 @@ int64 get_tick_count(){
 	return ((int64)tv.tv_sec * 1000) + tv.tv_usec/1000;
 }
 
-int printf_t(const char * format,...){
+int sys_log(FILE * fd, const char *format, ...){
 	
-	const int printf_max = 1024;
-	char ach_msg[printf_max] = {0};
+	char buf[1024] = {0};
 	
-	time_t cur = time(NULL);
-	struct tm cur_tm ;
-	localtime_r(&cur, &cur_tm);
-
-	sprintf(ach_msg, 
-			"%d-%02d-%02d %02d:%02d:%02d ",
-			 cur_tm.tm_year + 1900, 
-			 cur_tm.tm_mon + 1,
-			 cur_tm.tm_mday,
-			 cur_tm.tm_hour,
-			 cur_tm.tm_min, 
-			 cur_tm.tm_sec);
-		
-	int nlen = strlen(ach_msg);
-    int nsize = printf_max - nlen;
-     
-	va_list pv_list;
-    va_start(pv_list, format);	
-    vsnprintf(ach_msg + nlen, nsize, format, pv_list);  
-    va_end(pv_list);	
-	printf(ach_msg);
-	fflush(stdout);
+	va_list ap;
+    va_start(ap, format);	
+    vsnprintf(buf, sizeof(buf), format, ap);  
+    va_end(ap);
+	
+	struct tm tm;
+	time_t now = time(NULL);
+	localtime_r(&now, &tm);
+	
+	//Aug 01 11:28:04 4590 main[370]: error:
+	char tmpbuf[128] = {0};
+	strftime(tmpbuf, sizeof(tmpbuf), "%b %d %X", &tm);
+  
+	fprintf(fd, "%s %d %s", tmpbuf, getpid(), buf);
 	return 0;
 }
-
 

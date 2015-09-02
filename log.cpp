@@ -72,14 +72,14 @@ int log::init(const char* path, const char * name, int max_size /*= 8<<20*/){
 
 	
 	if(m_ring_buf.create(4000)){
-		printf_t("ring_buf create fail\n");
+		error_log("ring_buf create fail\n");
 		return -1;
 	}
 
 	m_brun = true;
 	pthread_t tid;
 	if(create_thread(tid, log_task, "log", this) < 0){
-		printf_t("create thread fail %d\n", errno);
+		error_log("create thread fail %d\n", errno);
 		return -1;
 	}	
 
@@ -113,14 +113,14 @@ int log::write_log(const char * msg){
 
 	int msg_len = strlen(msg);
 	if(msg_len > max_log_len){	
-		printf_t("msg to len(%d)\n", msg_len);
+		debug_log("msg to len(%d)\n", msg_len);
 		return -1;
 	}
 	
 	int total = msg_len + sizeof(log_header);
 	log_header * lh = (log_header*)malloc(total);
 	if(!lh){
-		printf_t("malloc log fail %d\n", errno);
+		error_log("malloc log fail %d\n", errno);
 		return -1;
 	}
 	
@@ -138,7 +138,7 @@ int log::write_log(const char * msg){
 int log::write_log(const char * msg, int len){
 
 	if(!m_file){
-		printf_t("file is not open\n");
+		error_log("file is not open\n");
 		return -1;
 	}
 	
@@ -148,7 +148,7 @@ int log::write_log(const char * msg, int len){
 	
 	int ret = fwrite(msg, 1, len, m_file);
 	if(ret < len){
-		printf_t("write %d/%d bytes error(%d)\n", ret, len, errno);
+		error_log("write %d/%d bytes error(%d)\n", ret, len, errno);
 	}
 	
 	if(((m_times++) & 2) == 0){
@@ -207,4 +207,3 @@ int log::close_log(){
 
 	return 0;
 }
-
