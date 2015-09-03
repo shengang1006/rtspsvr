@@ -64,7 +64,7 @@ public:
 	auto_lock(auto_mutex & mutex);	
 	~auto_lock();
 private:
-	auto_mutex m_mutex;
+	auto_mutex & m_mutex;
 };
 
 
