@@ -88,9 +88,7 @@ int ring_buffer::push(void* data){
 		m_write = 0;
 	}
 	
-	sem_post(&m_hsem);
-	
-	return 0;
+	return sem_post(&m_hsem) ? -1 : 0;
 }
 
 int ring_buffer::pop(void *&data, int msecs){
