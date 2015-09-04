@@ -153,26 +153,26 @@ int server::allot_appid(){
 	return m_last_app = (m_last_app + 1) % m_app_num;
 }
 
-int server::packet_dispatch(connection * n){
+int server::loop_unpack(connection * n){
 	
-	packet_buf * p_buf = n->get_recv_buf();
+	buffer * buf = n->get_recv_buf();
 	int offset = 0;
 	app * a = m_apps[n->get_appid()];
 	
-	while(p_buf->has > 0){
+	while(buf->has > 0){
 		
 		char* packet = NULL;
 		int pktlen = 0;
-		int consume = a->on_unpack(p_buf->buf + offset, p_buf->has ,pktlen, packet);
+		int consume = a->on_unpack(buf->buf + offset, buf->has ,pktlen, packet);
 		
-		if (consume < 0 || consume > p_buf->has){
-			error_log("unpack error consume(%d) has(%d)\n", consume, p_buf->has);
+		if (consume < 0 || consume > buf->has){
+			error_log("unpack error consume(%d) has(%d)\n", consume, buf->has);
 			return -1;
 		}
 
 		if (!consume){
-			if(p_buf->has && offset){
-				memcpy(p_buf->buf, p_buf->buf + offset, p_buf->has);
+			if(buf->has && offset){
+				memcpy(buf->buf, buf->buf + offset, buf->has);
 			}
 			return 0;
 		}
@@ -182,7 +182,7 @@ int server::packet_dispatch(connection * n){
 			return -1;
 		}
 		
-		p_buf->has -= consume;
+		buf->has -= consume;
 		offset += consume;
 		
 		//ignore empty packet
@@ -266,17 +266,17 @@ int server::handle_timer(evtime * e){
 
 int server::handle_recv(connection * n)
 {
-	packet_buf * p_buf = n->get_recv_buf();		
+	buffer * buf = n->get_recv_buf();		
 	//et mode
 	for(;;) {
 		
-		int left = p_buf->len - p_buf->has;
+		int left = buf->len - buf->has;
 		if(left <= 0){
 			error_log("packet too large\n");
 			break;
 		}
 		
-		int recv_bytes  = recv(n->fd(), p_buf->buf + p_buf->has, left, 0);	
+		int recv_bytes  = recv(n->fd(), buf->buf + buf->has, left, 0);	
 		if(recv_bytes < 0){	
 			if(errno != EINTR && errno != EAGAIN){
 				error_log("recv error(%d %s) socket(%d)\n", errno, strerror(errno), n->fd());
@@ -289,10 +289,10 @@ int server::handle_recv(connection * n)
 			return -1;
 		}
 		else{
-			p_buf->has += recv_bytes;
+			buf->has += recv_bytes;
 		}
 		
-		if(packet_dispatch(n) < 0){
+		if(loop_unpack(n) < 0){
 			return -1;
 		}
 		

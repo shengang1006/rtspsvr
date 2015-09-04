@@ -4,7 +4,7 @@
 #define recv_buf_len    64 * 1024
 #define send_buf_len    128 * 1024
 
-struct packet_buf{
+struct buffer{
 	char *buf;    //包缓冲区
 	int has;      //缓冲区数据位置
 	int len;      //缓冲区大小
@@ -55,7 +55,7 @@ protected:
 	list_node * get_list_node();
 	void set_list_node(list_node * ln);
 	
-	packet_buf * get_recv_buf();	
+	buffer * get_recv_buf();	
 	int post_send();
 	
 	friend class server;	
@@ -63,22 +63,21 @@ protected:
 	int init();
 	int release();
 	
-	int enable_writing();
-	int disable_writing();
-	int update();
+	int update_writing(bool enable);
+	int update_event();
 	
 protected:
 	int m_epfd; 
 	int m_fd;
 	int m_appid;
-	int m_events;
+	int m_epoll_events;
 	int m_operation;
 	int m_status;
 	int m_ref;
 	time_t m_alive_time;
 		
-	packet_buf m_send_buf;
-	packet_buf m_recv_buf;
+	buffer m_send_buf;
+	buffer m_recv_buf;
 
 	ipaddr m_peeraddr;
 	ipaddr m_localaddr;

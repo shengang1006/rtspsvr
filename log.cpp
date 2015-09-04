@@ -78,7 +78,7 @@ int log::init(const char* path, const char * name, int max_size /*= 8<<20*/){
 
 	m_brun = true;
 	pthread_t tid;
-	if(create_thread(tid, log_task, "log", this) < 0){
+	if(create_thread(&tid, log_task, "log", this) < 0){
 		error_log("create thread fail %d\n", errno);
 		return -1;
 	}	
@@ -113,7 +113,7 @@ int log::write_log(const char * msg){
 
 	int msg_len = strlen(msg);
 	if(msg_len > max_log_len){	
-		debug_log("msg to len(%d)\n", msg_len);
+		error_log("msg to len(%d)\n", msg_len);
 		return -1;
 	}
 	
@@ -128,11 +128,13 @@ int log::write_log(const char * msg){
 	lh->msg = (char*)lh + sizeof(log_header);
 	memcpy(lh->msg, msg, msg_len);
 
-	if(m_ring_buf.push(lh) < 0){
+	auto_lock lock(m_w_mutex);
+	int ret = m_ring_buf.push(lh);
+	if(ret < 0){
+		error_log("ring buffer push fail %d\n", errno);
 		free(lh);
-		return -1;
 	}
-	return 0;
+	return ret;
 }
 
 int log::write_log(const char * msg, int len){
@@ -148,7 +150,7 @@ int log::write_log(const char * msg, int len){
 	
 	int ret = fwrite(msg, 1, len, m_file);
 	if(ret < len){
-		error_log("write %d/%d bytes error(%d)\n", ret, len, errno);
+		warn_log("write %d/%d bytes error(%d)\n", ret, len, errno);
 	}
 	
 	if(((m_times++) & 2) == 0){
@@ -207,3 +209,4 @@ int log::close_log(){
 
 	return 0;
 }
+

@@ -54,6 +54,7 @@ private:
 	static void * app_run(void* param);
 	int run();		
 private:	
+	auto_mutex m_push_mutex;
 	ring_buffer m_ring_buf;
 	char m_name[max_app_name + 1];
 	bool m_brun;

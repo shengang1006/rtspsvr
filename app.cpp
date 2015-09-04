@@ -79,8 +79,7 @@ int app::create(int appid, int msg_count, const char * app_name){
 	strncpy(m_name, app_name, sizeof(m_name)-1);
 	
 	m_brun = true;
-	pthread_t tid;
-	if(create_thread(tid, app_run, m_name, (void*)this) == -1){
+	if(create_thread(NULL, app_run, m_name, (void*)this) == -1){
 		error_log("create_thread fail\n");
 		return -1;
 	}
@@ -108,12 +107,13 @@ int  app::push(const hd_app & temp){
 		msg->content[temp.length] = 0;	
 	}
 	
-	if(m_ring_buf.push(msg) < 0){
+	auto_lock __lock(m_push_mutex);
+	int ret = m_ring_buf.push(msg);
+	if(ret < 0){
 		error_log("drop msg total(%d)\n", ++m_drop_msg);
 		free(msg);
-		return -1;
 	}
-	return 0;
+	return ret;
 }
 
 const char * app::name(){

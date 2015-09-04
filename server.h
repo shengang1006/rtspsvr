@@ -54,7 +54,7 @@ protected:
 	
 	int handle_timer(evtime * e);
 	
-	int packet_dispatch(connection * n);
+	int loop_unpack(connection * n);
 	
 	int post_tcp_msg(connection * n, int event, void * content = NULL, int length = 0);
 	

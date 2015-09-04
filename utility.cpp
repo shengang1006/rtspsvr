@@ -80,16 +80,14 @@ int ring_buffer::push(void* data){
 		return -1;
 	}
 	
-	{
-		auto_lock __lock(m_w_mutex);
-		if(m_buf[m_write]){
-			return -1;
-		}
-		m_buf[m_write] = data;	
-		if(++m_write == m_size){
-			m_write = 0;
-		}
+	if(m_buf[m_write]){
+		return -1;
 	}
+	m_buf[m_write] = data;	
+	if(++m_write == m_size){
+		m_write = 0;
+	}
+	
 	sem_post(&m_hsem);
 	
 	return 0;
@@ -168,7 +166,7 @@ void *thread_task(void *param){
 	return 0;
 }
 
-int create_thread(pthread_t & tid, thread_fun fun, const char * name, void * param){
+int create_thread(pthread_t * tid, thread_fun fun, const char * name, void * param){
 
 	//struct sched_param tparam;	
 	//uint stack_size = 512<<10;
@@ -188,12 +186,18 @@ int create_thread(pthread_t & tid, thread_fun fun, const char * name, void * par
 	int len = sizeof(t->name) -1;
 	strncpy(t->name, name, len);
 	t->name[len] = 0;
-		
-	if(pthread_create(&tid, &attr, thread_task, t)){
+
+	pthread_t th = 0;
+	if(pthread_create(&th, &attr, thread_task, t)){
 		pthread_attr_destroy(&attr);
 		delete t; //add by 2014/10/3
 		return -1;
 	}
+	
+	if(tid){
+		*tid = th;
+	}
+	
 	pthread_attr_destroy(&attr);
 	return 0;
 }

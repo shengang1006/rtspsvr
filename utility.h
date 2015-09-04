@@ -83,11 +83,10 @@ protected:
 	void ** m_buf;
 	int m_size;
 	sem_t m_hsem;
-	auto_mutex m_w_mutex;
 };
 
 
-int create_thread(pthread_t & tid, thread_fun fun, const char * name, void * param);
+int create_thread(pthread_t * tid, thread_fun fun, const char * name, void * param);
 
 int create_directory(const char * path, int amode = 777);
 

@@ -1,13 +1,10 @@
-#include "connection.h"
 #include <sys/epoll.h>
 #include <netinet/tcp.h>
-#include <arpa/inet.h>
+#include "connection.h"
 
 #define EPOLLNONE 0x0
 
-
-
-int init_packet_buf(packet_buf & s,int size){
+int init_buffer(buffer & s,int size){
 	if(!s.buf){
 	s.buf = (char*)malloc(size);
 	s.has = 0;
@@ -19,7 +16,7 @@ int init_packet_buf(packet_buf & s,int size){
 	return 0;
 }
 
-void release_packet_buf(packet_buf & s){
+void release_buffer(buffer & s){
 	if(s.buf){
 		free(s.buf);
 		s.buf = 0;
@@ -41,7 +38,7 @@ connection::connection(int epfd, int fd){
 	m_epfd = epfd;
 	m_context = NULL;
 	m_list_node = NULL;
-	m_events = EPOLLNONE;
+	m_epoll_events = EPOLLNONE;
 	m_status = kdisconnected;
 	m_operation = knew;
 	m_ref = 0;
@@ -76,7 +73,7 @@ void connection::set_peeraddr(const struct sockaddr_in & addr){
 	inet_ntoa_convert(m_peeraddr , addr);
 }
 	
-packet_buf * connection::get_recv_buf(){
+buffer * connection::get_recv_buf(){
 	return &m_recv_buf;
 }
 
@@ -107,7 +104,7 @@ int connection::set_status(int status){
 	}
 	
 	if(status == kconnecting){
-		return enable_writing();
+		return	update_writing(true);
 	}
 	return 0;
 }
@@ -138,12 +135,12 @@ void connection::set_list_node(list_node * ln){
 }
 	
 int connection::init(){
-	m_events= EPOLLIN | EPOLLET | EPOLLPRI;
-	int ret = update();
+	m_epoll_events= EPOLLIN | EPOLLET | EPOLLPRI;
+	int ret = update_event();
 		
 	if(!ret){
-		//init_packet_buf(m_send_buf, send_buf_len);
-		init_packet_buf(m_recv_buf, recv_buf_len);
+		//init_buffer(m_send_buf, send_buf_len);
+		init_buffer(m_recv_buf, recv_buf_len);
 	}
 	
 	struct sockaddr_in localaddr;
@@ -160,9 +157,9 @@ int connection::init(){
 int connection::release(){	
 
 	int ret = 0;
-	if(m_events != EPOLLNONE){
-		m_events = EPOLLNONE;
-		ret = update();
+	if(m_epoll_events != EPOLLNONE){
+		m_epoll_events = EPOLLNONE;
+		ret = update_event();
 	}
 	
 	if(m_fd >= 0){
@@ -170,47 +167,39 @@ int connection::release(){
 		m_fd = -1;
 	}
 	
-	release_packet_buf(m_send_buf);
-	release_packet_buf(m_recv_buf);
+	release_buffer(m_send_buf);
+	release_buffer(m_recv_buf);
 
 	return ret;
 }
 
-int connection::disable_writing(){	
-	if((m_events & EPOLLOUT)){
-		m_events &= ~EPOLLOUT;
-		return update();
+int connection::update_writing(bool enable){
+
+	int evs = m_epoll_events & EPOLLOUT;
+	if(!evs && enable){
+		m_epoll_events |= EPOLLOUT;
+	}
+	else if(evs && !enable){
+		m_epoll_events &= ~EPOLLOUT;
 	}
 	else{
-		warn_log("already disable_writing socket(%d)\n", m_fd);
+		warn_log("already update_writing enable(%d)\n", enable);
+		return 0;
 	}
-	return 0;
+	return update_event();
 }
 
-int connection::enable_writing(){
-
-	if(!(m_events & EPOLLOUT))
-	{
-		m_events |= EPOLLOUT;
-		return update();
-	}
-	else{
-		warn_log("already enable_writing socket(%d)\n", m_fd);
-	}
-	return 0;
-}
-
-int connection::update(){
+int connection::update_event(){
 	struct epoll_event ev = {0};
 	ev.data.ptr = (void*)this;
-	ev.events = m_events;
+	ev.events = m_epoll_events;
 	int ret = -1;
 	if(m_operation == knew || m_operation == kdel){
 		m_operation = kadd;
 		ret = epoll_ctl(m_epfd, EPOLL_CTL_ADD, m_fd, &ev);
 	}
 	else{
-		if(m_events == EPOLLNONE){
+		if(m_epoll_events == EPOLLNONE){
 			m_operation = kdel;
 			ret = epoll_ctl(m_epfd, EPOLL_CTL_DEL, m_fd, &ev);
 		}
@@ -220,7 +209,7 @@ int connection::update(){
 	}
 	
 	if(ret < 0){
-		error_log("update events error %d socket(%d)\n", errno, m_fd);	
+		error_log("update_event error %d socket(%d)\n", errno, m_fd);	
 	}
 	return ret;
 }
@@ -253,7 +242,7 @@ int connection::set_tcp_no_delay(bool val){
 
 int connection::post_send(){
 	
-	if(!m_events){
+	if(!m_epoll_events){
 		warn_log("post send already closed socket(%d)\n", m_fd);
 		return -1;
 	}
@@ -287,7 +276,7 @@ int connection::post_send(){
 	
 	m_send_buf.has = len - total;
 	if(!m_send_buf.has){
-		disable_writing();
+		update_writing(false);
 	}
 	else{
 		memcpy(m_send_buf.buf, m_send_buf.buf + total, m_send_buf.has);
@@ -302,7 +291,7 @@ int connection::post_send(char * data, int len){
 		return 0;
 	}
 	
-	if(!m_events){
+	if(!m_epoll_events){
 		warn_log("post_send already closed socket(%d)\n", m_fd);
 		return -1;
 	}
@@ -332,8 +321,8 @@ int connection::post_send(char * data, int len){
 			}
 			else{
 				//push into send buf
-				if(init_packet_buf(m_send_buf, send_buf_len) < 0){
-					error_log("post_send init_packet_buf error(%d)\n", errno);
+				if(init_buffer(m_send_buf, send_buf_len) < 0){
+					error_log("post_send init_buffer error(%d)\n", errno);
 					return -1;
 				}
 				memcpy(m_send_buf.buf + m_send_buf.has, data + total, len - total);
@@ -342,7 +331,7 @@ int connection::post_send(char * data, int len){
 				warn_log("send buffer full total %d/%d error(%d %s) socket(%d) \n", 
 				total, len, errno, strerror(errno), m_fd);
 				
-				enable_writing();
+				update_writing(true);
 				return 0;
 			}		
 		}

@@ -34,9 +34,7 @@ private:
 
 	ring_buffer m_ring_buf;
 	auto_mutex m_task_mutex;
-
+	auto_mutex m_w_mutex;
 	bool m_brun;
 };
-
-
 
