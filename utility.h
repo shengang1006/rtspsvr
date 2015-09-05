@@ -96,6 +96,6 @@ int64 get_tick_count();
 
 /*system simple log*/
 int sys_log(FILE * fd, const char *format,...);
-#define error_log(format, ...) sys_log (stderr, "%s[%d]: error: "format"", __func__, __LINE__, ## __VA_ARGS__)
-#define debug_log(format, ...) sys_log (stdout, "%s[%d]: debug: "format"", __func__, __LINE__, ## __VA_ARGS__)
-#define warn_log(format, ...)  sys_log (stderr, "%s[%d]: warn: "format"", __func__, __LINE__,  ## __VA_ARGS__)
+#define error_log(format, ...) sys_log (stderr, "%s[%d]: error: "format"", __func__, __LINE__, ##__VA_ARGS__)
+#define debug_log(format, ...) sys_log (stdout, "%s[%d]: debug: "format"", __func__, __LINE__, ##__VA_ARGS__)
+#define warn_log(format, ...)  sys_log (stderr, "%s[%d]: warn: "format"", __func__, __LINE__,  ##__VA_ARGS__)

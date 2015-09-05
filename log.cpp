@@ -78,7 +78,7 @@ int log::init(const char* path, const char * name, int max_size /*= 8<<20*/){
 
 	m_brun = true;
 	pthread_t tid;
-	if(create_thread(&tid, log_task, "log", this) < 0){
+	if(create_thread(&tid, log_task, "log_task", this) < 0){
 		error_log("create thread fail %d\n", errno);
 		return -1;
 	}	
