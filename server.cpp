@@ -5,7 +5,6 @@
 #include <sys/resource.h>
 #include <signal.h> 
 #include "server.h"
-#include "log.h"
 
 server::server(){
 	m_epfd = -1;
