@@ -146,9 +146,42 @@ int log::write_log(const char * msg, int len){
 	
 	time_t cur = time(NULL);
 	struct tm tm_cur ;
-	localtime_r(&cur, &tm_cur);
+	localtime_r(&cur, &tm_cur);	
+	int cur_size = (int)ftell(m_file);
+	
+	if(cur_size > m_max_size || m_logbegin.tm_mday != tm_cur.tm_mday){
+		
+		fprintf(m_file, "file log %d-%d day end write %d/%d bytes\n", 
+		m_logbegin.tm_mday , tm_cur.tm_mday, cur_size, m_max_size);
+
+		fclose(m_file);
+		
+		if(m_logbegin.tm_mday != tm_cur.tm_mday){
+			tm_cur.tm_hour = 24;
+			tm_cur.tm_min = 0; 
+			tm_cur.tm_sec = 0;
+		}
+	
+		char newfilename[512] = {0};
+		snprintf(newfilename ,sizeof(newfilename),
+			"%s-%d%02d%02d-%02d%02d%02d.log", 
+			m_pathname,
+			m_logbegin.tm_year+1900, 
+			m_logbegin.tm_mon+1,
+			m_logbegin.tm_mday,
+			tm_cur.tm_hour,
+			tm_cur.tm_min, 
+			tm_cur.tm_sec);
+	
+		rename(m_filename, newfilename);
+		
+		if(open_log() < 0){
+			return -1;
+		}
+	}
 	
 	int ret = fwrite(msg, 1, len, m_file);
+	
 	if(ret < len){
 		warn_log("write %d/%d bytes error(%d)\n", ret, len, errno);
 	}
@@ -157,36 +190,7 @@ int log::write_log(const char * msg, int len){
 		fflush(m_file);
 	}
 	
-	int cur_size = (int)ftell(m_file);
-	
-	if(cur_size < m_max_size && m_logbegin.tm_mday == tm_cur.tm_mday){
-		return 0;
-	}
-	
-	fprintf(m_file, "file log %d-%d day end write %d/%d bytes\n", 
-	m_logbegin.tm_mday , tm_cur.tm_mday, cur_size, m_max_size);
-	
-	fclose(m_file);
-	
-	if(m_logbegin.tm_mday != tm_cur.tm_mday){
-		tm_cur.tm_hour = 24;
-		tm_cur.tm_min = 0; 
-		tm_cur.tm_sec = 0;
-	}
-
-	char newfilename[512] = {0};
-	snprintf(newfilename ,sizeof(newfilename),
-		"%s-%d%02d%02d-%02d%02d%02d.log", 
-		m_pathname,
-		m_logbegin.tm_year+1900, 
-		m_logbegin.tm_mon+1,
-		m_logbegin.tm_mday,
-		tm_cur.tm_hour,
-		tm_cur.tm_min, 
-		tm_cur.tm_sec);
-
-	rename(m_filename, newfilename);
-	return open_log();
+	return 0;
 }
 
 
