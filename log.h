@@ -13,7 +13,7 @@ private:
 public:
 	static log * instance();
 	virtual~ log();
-	int init(const char* path, const char * name, int max_size = 8<<20); 
+	int init(const char* path, const char * name, int max_size = 8<<20, bool immediate_flush = true); 
 	int write_log(const char * msg);
 	int close_log();
 
@@ -28,7 +28,7 @@ private:
 	char m_pathname[256];
 	char m_filename[256];
 	int m_max_size;
-	int m_times;
+
 	struct tm m_logbegin;
 	struct tm m_logend;
 
@@ -36,5 +36,6 @@ private:
 	auto_mutex m_task_mutex;
 	auto_mutex m_w_mutex;
 	bool m_brun;
+	bool m_immediate_flush;
 };
 

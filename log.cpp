@@ -8,7 +8,7 @@ struct log_header{
 
 log::log(){
 	m_file = NULL;
-	m_times = 0;
+	m_immediate_flush = true;
 	memset(m_pathname, 0, sizeof(m_pathname));
 	memset(m_filename, 0, sizeof(m_filename));
 }
@@ -57,12 +57,14 @@ int log::run(){
 }
 
 
-int log::init(const char* path, const char * name, int max_size /*= 8<<20*/){
+int log::init(const char* path, const char * name, 
+			int max_size /*= 8<<20*/,  bool immediate_flush /*= true*/){
 
 	if(create_directory(path) < 0){
 		return -1;
 	}
 
+	m_immediate_flush = immediate_flush;
 	m_max_size = max_size <= (2<<10) ? (2<<10): max_size;
 	strcpy(m_pathname, path);
 	if(m_pathname[strlen(m_pathname) -1] != '/'){
@@ -104,7 +106,6 @@ int log::open_log(){
 	}
 	
 	fseek(m_file, 0L, SEEK_END);
-	m_times = 0;
 	fprintf(m_file, "************* file log begin ************\n");
 	return 0;
 }
@@ -186,9 +187,9 @@ int log::write_log(const char * msg, int len){
 		warn_log("write %d/%d bytes error(%d)\n", ret, len, errno);
 	}
 	
-	if(((m_times++) & 2) == 0){
+	if(m_immediate_flush){	
 		fflush(m_file);
-	}
+	}	
 	
 	return 0;
 }
