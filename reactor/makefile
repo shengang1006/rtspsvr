@@ -4,7 +4,7 @@ CC      := g++
 AR := ar rc
 
 #以下是指定编译需要的头文件
-INCLUDE := -I./ -I../common/
+INCLUDE := -I./ -I../
 
 #以下是指定需要的库文件 -L
 LIBS    := -lrt
@@ -14,8 +14,8 @@ LIBPATH :=
 
 
 #以下是源文件
-#wildcard把 指定目录 ./ 和 ../common/ 下的所有后缀是cpp的文件全部展开。
-SRCS    := $(wildcard *.cpp ../common/*.cpp)
+#wildcard把 指定目录 ./ 和 ../ 下的所有后缀是cpp的文件全部展开。
+SRCS    := $(wildcard *.cpp ../*.cpp)
 
 #notdir把展开的文件去除掉路径信息
 DIR = $(notdir $(SRCS))
