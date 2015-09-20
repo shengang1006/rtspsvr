@@ -37,7 +37,7 @@ int server::run(){
 	
 	while(true){
 	
-		int timeout = m_timer.timeout();
+		int timeout = m_timer.latency_time();
 		
 		int res = epoll_wait (m_epfd, events, event_num, timeout);
 		
@@ -124,9 +124,9 @@ int server::post_tcp_msg(connection * n, int event, void * content, int length){
 	msg.length = length;
 	msg.type = tcp_type;
 	msg.u.tcp.n = n;
-	int ret = m_apps[n->get_appid()]->push(msg);
+	int ret = m_apps[((app_connection*)n)->get_appid()]->push(msg);
 	if(ret < 0){
-		if(event == ev_connect_fail){
+		if(event == ev_sys_connect_fail){
 			delete n;
 		}
 		error_log("post_tcp_msg fail, event(%d)\n", event);
@@ -136,12 +136,14 @@ int server::post_tcp_msg(connection * n, int event, void * content, int length){
 
 int server::post_timer_msg(evtime * e){
 	
+	app_context * ac = (app_context *)e->ptr;
 	hd_app msg = {0};
 	msg.event = e->id;
 	msg.type = timer_type;
-	msg.u.timer.ptr = e->ptr;
+	msg.u.timer.ptr = ac->ptr;
 	msg.u.timer.interval = e->interval;
-	int ret =  m_apps[e->appid]->push(msg);
+	int ret =  m_apps[ac->appid]->push(msg);
+	free(ac);
 	if(ret < 0){
 		error_log("post_timer_msg fail, event(%d)\n", e->id);
 	}
@@ -154,9 +156,9 @@ int server::allot_appid(){
 
 int server::loop_unpack(connection * n){
 	
-	buffer * buf = n->get_recv_buf();
+	buffer * buf = n->get_recv_buffer();
 	int offset = 0;
-	app * a = m_apps[n->get_appid()];
+	app * a = m_apps[((app_connection*)n)->get_appid()];
 	
 	while(buf->has > 0){
 		
@@ -186,7 +188,7 @@ int server::loop_unpack(connection * n){
 		
 		//ignore empty packet
 		if(pktlen && packet){
-			post_tcp_msg(n, ev_recv, packet, pktlen);	
+			post_tcp_msg(n, ev_sys_recv, packet, pktlen);	
 		}	
 	}
 	
@@ -225,7 +227,7 @@ int server::timer_connect(evtime * e){
 	if (ret < 0){	
 		if (errno != EINTR && errno != EINPROGRESS && errno != EISCONN){
 			error_log("connect error(%d)\n", errno);
-			post_tcp_msg(n, ev_connect_fail);
+			post_tcp_msg(n, ev_sys_connect_fail);
 		}
 		else{
 			n->set_status(kconnecting);
@@ -235,7 +237,7 @@ int server::timer_connect(evtime * e){
 		n->set_status(kconnected);
 		n->set_alive_time(time(NULL));
 		n->set_list_node(m_list.push_back(n));			
-		post_tcp_msg(n, ev_connect_ok);
+		post_tcp_msg(n, ev_sys_connect_ok);
 	}
 	return 0;
 }
@@ -247,13 +249,13 @@ int server::timer_active(evtime*e){
 
 int server::handle_timer(evtime * e){
 	
-	if(e->id == ev_timer_keepalive){	
+	if(e->id == ev_sys_timer_keepalive){	
 		timer_keepalive(e);
 	}
-	else if(e->id == ev_timer_active){
+	else if(e->id == ev_sys_timer_active){
 		timer_active(e);
 	}
-	else if(e->id == ev_timer_connect){
+	else if(e->id == ev_sys_timer_connect){
 		timer_connect(e);
 	}
 	else{	
@@ -265,7 +267,7 @@ int server::handle_timer(evtime * e){
 
 int server::handle_recv(connection * n)
 {
-	buffer * buf = n->get_recv_buf();		
+	buffer * buf = n->get_recv_buffer();		
 	//et mode
 	for(;;) {
 		
@@ -318,7 +320,7 @@ int server::handle_connect(connection * n){
 	n->set_alive_time(time(NULL));
 	n->set_status(kconnected);		
 	n->set_list_node(m_list.push_back(n));	
-	post_tcp_msg(n, ev_connect_ok);		
+	post_tcp_msg(n, ev_sys_connect_ok);		
 	
 	debug_log("connect ok socket(%d)\n", n->fd());
 	
@@ -339,11 +341,11 @@ int server::handle_close(connection * n,  int reason){
 	if(n->get_status() == kconnected){
 		n->set_status(kdisconnected);
 		m_list.remove(n->get_list_node());
-		post_tcp_msg(n, ev_close, &reason, sizeof(reason));
+		post_tcp_msg(n, ev_sys_close, &reason, sizeof(reason));
 	}
 	else if(n->get_status() == kconnecting){
 		n->set_status(kdisconnected);
-		post_tcp_msg(n, ev_connect_fail);
+		post_tcp_msg(n, ev_sys_connect_fail);
 	}
 	else{
 		warn_log("handle_close already closed socket(%d)\n", n->fd());
@@ -381,13 +383,13 @@ int server::handle_accept(){
 		}
 		
 		//allocate appid		
-		connection * n = new connection(m_epfd, fd);
+		app_connection * n = new app_connection(m_epfd, fd);
 		n->set_appid(allot_appid());
 		n->set_status(kconnected);
 		n->set_peeraddr(peeraddr);
 		n->set_alive_time(cur);
 		n->set_list_node(m_list.push_back(n));
-		post_tcp_msg(n, ev_accept);
+		post_tcp_msg(n, ev_sys_accept);
 		
 		ipaddr &paddr = n->get_peeraddr();
 		debug_log("accept from %s:%d  socket(%d)\n",paddr.ip, paddr.port, fd);
@@ -446,8 +448,8 @@ int server::init(){
 	}
 	
 	//add system timer event
-	m_timer.add(ev_timer_active,  3600 * 1000, NULL);
-	m_timer.add(ev_timer_keepalive, 15000, NULL);	
+	m_timer.add(ev_sys_timer_active,  3600 * 1000, NULL);
+	m_timer.add(ev_sys_timer_keepalive, 15000, NULL);	
 	return 0;
 }
 
@@ -517,7 +519,18 @@ int server::loop(){
 }
 
 int server::add_timer(int id, int interval, int appid, void * context){
-	return m_timer.add(id, interval, context, appid);
+	app_context * ac = (app_context*)malloc(sizeof(app_context));
+	if(!ac){
+		return -1;
+	}
+	
+	ac->ptr = context;
+	ac->appid = appid;
+	if(m_timer.add(id, interval, ac) < 0){
+		free(ac);
+		return -1;
+	}
+	return 0;
 }
 
 int server::add_abs_timer(int id, int year, int mon, int day, 
@@ -539,7 +552,8 @@ int server::add_abs_timer(int id, int year, int mon, int day,
 	time_t curtime;
 	curtime = time(NULL);
 	int interval = (int)difftime(tsecs, curtime) * 1000;
-	return m_timer.add(id, interval, context, appid);
+	
+	return add_timer(id, interval, appid, context);
 }
 
 int server::register_app(app * a, int msg_count, const char * name){
@@ -579,12 +593,12 @@ int server::post_connect(const char * ip, ushort port, int delay, int appid , vo
 	ipaddr peeraddr = {{0}, port};
 	strncpy(peeraddr.ip, ip, sizeof(peeraddr.ip) - 1);
 	
-	connection * n = new connection(m_epfd, fd);
+	app_connection * n = new app_connection(m_epfd, fd);
 	n->set_peeraddr(peeraddr);
 	n->set_context(context);
 	n->set_appid(appid);
 		
-	if(m_timer.add(ev_timer_connect, delay, n) < 0){
+	if(m_timer.add(ev_sys_timer_connect, delay, n) < 0){
 		delete n;
 		return -1;
 	}
@@ -593,23 +607,7 @@ int server::post_connect(const char * ip, ushort port, int delay, int appid , vo
 
 
 int server::stop(){
-	
-	if(m_epfd >= 0){
-		close(m_epfd);
-		m_epfd = -1;
-	}
-	
-	if(m_listenfd >= 0){
-		close(m_listenfd);
-		m_listenfd = -1;
-	}
-	
-	m_timer.release();
-	
-	for(int k = 0; k < m_app_num; k++){
-		delete m_apps[k];
-	}
-	m_app_num = 0;
+	exit(0);
 	return 0;
 }
 

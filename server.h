@@ -1,10 +1,7 @@
 #pragma once
 #include "app.h"
-#include "timer.h"
 
 #define max_app_num     16
-/*
-*/
 
 class server{
 	
@@ -77,7 +74,7 @@ private:
 	app * m_apps[max_app_num];
 	int m_app_num;
 	int m_last_app;
-	timer m_timer;
+	app_timer m_timer;
 	int m_keepalive;
 	tlist m_list;
 };

@@ -1,8 +1,18 @@
 #pragma once
 #include "connection.h"
+#include "timer.h"
 
 enum{tcp_type = 0, app_type, timer_type};
 
+enum{
+ 	ev_sys_connect_ok,       //连接成功
+	ev_sys_connect_fail,     //连接失败
+	ev_sys_accept,           //新的连接
+	ev_sys_recv,             //接收消息
+	ev_sys_close,            //关闭消息
+};
+
+/***********hd_app***************/
 struct hd_app{
 	
 	int type;     
@@ -25,6 +35,40 @@ struct hd_app{
 	}u;
 };
 
+/***********app_connection***************/
+class app_connection: public connection{
+public:
+	app_connection(int epfd, int fd);
+	int  get_appid();
+	void set_appid(int appid);	
+	int post_send(char * data, int len);
+	int post_send();
+protected:
+	int m_appid;	
+	auto_mutex m_mutex;	
+};
+
+/***********app_context***************/
+struct app_context{
+	void * ptr;
+	int appid;
+};
+
+/***********app_timer***************/
+class app_timer{
+public:
+	int init(int precision = 1000);
+	int release();
+	int add(int id, int interval, void* data);
+	int pop_timeout(evtime & ev);
+	int latency_time();
+public:
+	timer m_timer;
+	int m_precision;
+	auto_mutex m_mutex;	
+};
+
+/***********app***************/
 class app{
 	
 public:
@@ -56,7 +100,7 @@ private:
 private:	
 	auto_mutex m_push_mutex;
 	ring_buffer m_ring_buf;
-	char m_name[max_app_name + 1];
+	char m_name[max_task_len + 1];
 	bool m_brun;
 	int m_drop_msg;
 	int m_appid;

@@ -1,6 +1,62 @@
 #include "app.h"
 #include "server.h"
 
+/********app_connection*********/
+app_connection::app_connection(int epfd, int fd)
+:connection(epfd, fd){
+	m_appid = 0;
+}
+
+int app_connection::get_appid(){
+	return m_appid;
+}
+
+void app_connection::set_appid(int appid){
+	m_appid = appid;
+}
+
+int app_connection::post_send(char * data, int len){
+	auto_lock __lock(m_mutex);
+	return connection::post_send(data, len);
+}
+
+int app_connection::post_send(){
+	auto_lock __lock(m_mutex);
+	return connection::post_send();
+}
+	
+/********app_timer*********/	
+int app_timer::init(int precision /*= 1000*/){
+	m_precision = precision;
+	auto_lock __lock(m_mutex);
+	return m_timer.init();
+}
+
+int app_timer::release(){
+	auto_lock __lock(m_mutex);
+	return m_timer.release();
+}
+
+int app_timer::add(int id, int interval, void* data){
+	auto_lock __lock(m_mutex);
+	return m_timer.add(id, interval, data);
+}
+
+int app_timer::pop_timeout(evtime & ev){
+	auto_lock __lock(m_mutex);
+	return m_timer.pop_timeout(ev);
+}
+
+int app_timer::latency_time(){
+	auto_lock __lock(m_mutex);
+	int timeout = m_timer.latency_time();
+	if(timeout < 0 || timeout > m_precision){
+		return m_precision;
+	}
+	return timeout;
+}
+	
+/********app*********/
 app::app(){
 	m_brun = false;
 	m_drop_msg = 0;
@@ -31,24 +87,24 @@ int app::run(){
 		hd_app * msg = (hd_app*)data;
 		if(msg->type == tcp_type){
 			switch(msg->event){
-				case ev_recv:
+				case ev_sys_recv:
 					on_recv(msg->u.tcp.n, msg->content, msg->length);
 					break;
 					
-				case ev_close:
+				case ev_sys_close:
 					on_close(msg->u.tcp.n, *((int*)msg->content));
 					delete msg->u.tcp.n;
 					break;
 					
-				case ev_accept:
+				case ev_sys_accept:
 					on_accept(msg->u.tcp.n);
 					break;
 					
-				case ev_connect_ok:
+				case ev_sys_connect_ok:
 					on_connect(msg->u.tcp.n);
 					break;
 					
-				case ev_connect_fail:
+				case ev_sys_connect_fail:
 					on_connect(msg->u.tcp.n);
 					delete msg->u.tcp.n;
 				break;
