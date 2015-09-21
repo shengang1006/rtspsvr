@@ -37,11 +37,11 @@ enum{
 	ev_sys_timer_active = 0,
 	ev_sys_timer_connect,
 	ev_sys_timer_keepalive,
-	ev_sys_timer_user,   
+	ev_sys_user,   
 };
 enum{
 	itl_sys_timer_active = 3600 * 1000,
-	itl_sys_timer_keepalive = 30 * 1000,
+	itl_sys_timer_keepalive = 15 * 1000,
 };
 
 /*ipaddr define*/
