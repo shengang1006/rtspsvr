@@ -35,8 +35,8 @@ public:
 	int init();
 	int release();
 
-	virtual int post_send(char * data, int len);
-	virtual int post_send();
+	int post_send(char * data, int len);
+	int post_send();
 
 	void set_peeraddr(const ipaddr & addr);
 	void set_peeraddr(const struct sockaddr_in & addr);

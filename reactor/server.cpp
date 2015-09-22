@@ -59,7 +59,7 @@ int server::run(){
 				continue;
 			}
 			
-			connection * n = (connection*)events[i].data.ptr;
+			app_connection * n = (app_connection*)events[i].data.ptr;
 			//read
 			if (events[i].events & EPOLLIN){
 				n->set_alive_time(cur);
@@ -107,7 +107,7 @@ int server::post_app_msg(int dst, int event, void * content, int length){
 		error_log("appid(%d) error\n", dst);
 		return -1;
 	}
-	hd_app  msg = {0};
+	app_hd  msg = {0};
 	msg.event = event;
 	msg.content = (char*)content;
 	msg.length = length;
@@ -116,15 +116,15 @@ int server::post_app_msg(int dst, int event, void * content, int length){
 	return m_apps[dst]->push(msg);
 }
 
-int server::post_tcp_msg(connection * n, int event, void * content, int length){
+int server::post_tcp_msg(app_connection * n, int event, void * content, int length){
 	
-	hd_app  msg = {0};
+	app_hd  msg = {0};
 	msg.event = event;
 	msg.content = (char*)content;
 	msg.length = length;
 	msg.type = tcp_type;
 	msg.u.tcp.n = n;
-	int ret = m_apps[((app_connection*)n)->get_appid()]->push(msg);
+	int ret = m_apps[n->get_appid()]->push(msg);
 	if(ret < 0){
 		if(event == ev_sys_connect_fail){
 			delete n;
@@ -137,7 +137,7 @@ int server::post_tcp_msg(connection * n, int event, void * content, int length){
 int server::post_timer_msg(evtime * e){
 	
 	app_context * ac = (app_context *)e->ptr;
-	hd_app msg = {0};
+	app_hd msg = {0};
 	msg.event = e->id;
 	msg.type = timer_type;
 	msg.u.timer.ptr = ac->ptr;
@@ -154,11 +154,11 @@ int server::allot_appid(){
 	return m_last_app = (m_last_app + 1) % m_app_num;
 }
 
-int server::loop_unpack(connection * n){
+int server::loop_unpack(app_connection * n){
 	
 	buffer * buf = n->get_recv_buffer();
 	int offset = 0;
-	app * a = m_apps[((app_connection*)n)->get_appid()];
+	app * a = m_apps[n->get_appid()];
 	
 	while(buf->has > 0){
 		
@@ -202,12 +202,12 @@ int server::timer_keepalive(evtime * e){
 	
 	for(list_node * pos = m_list.begin(); pos != m_list.end();){
 		
-		connection* n = (connection*)pos->ptr;
+		app_connection* n = (app_connection*)pos->ptr;
 		int dis = (int)difftime(cur, n->get_alive_time());
 		if(dis < m_keepalive){
 			break;
 		}
-		warn_log("connection(%d) time out(%d)\n", n->fd(), dis);	
+		warn_log("app_connection(%d) time out(%d)\n", n->fd(), dis);	
 		pos = pos->next;
 		handle_close(n, timeout_reason);
 	}
@@ -216,7 +216,7 @@ int server::timer_keepalive(evtime * e){
 
 int server::timer_connect(evtime * e){
 	
-	connection * n = (connection*)e->ptr;
+	app_connection * n = (app_connection*)e->ptr;
 	ipaddr &peeraddr = n->get_peeraddr();
 	struct sockaddr_in seraddr = {0};
 	seraddr.sin_family = AF_INET; 
@@ -265,7 +265,7 @@ int server::handle_timer(evtime * e){
 }
 
 
-int server::handle_recv(connection * n)
+int server::handle_recv(app_connection * n)
 {
 	buffer * buf = n->get_recv_buffer();		
 	//et mode
@@ -307,7 +307,7 @@ int server::handle_recv(connection * n)
 }
 
 
-int server::handle_connect(connection * n){
+int server::handle_connect(app_connection * n){
 	int error = 0;
 	int len = sizeof(error);
 	int ret = getsockopt(n->fd(), SOL_SOCKET, SO_ERROR, &error, (socklen_t*)&len);
@@ -327,7 +327,7 @@ int server::handle_connect(connection * n){
 	return 0;
 }
 
-int server::handle_write(connection * n){
+int server::handle_write(app_connection * n){
 	if(n->get_status() == kconnecting){
 		return handle_connect(n);
 	}
@@ -336,7 +336,7 @@ int server::handle_write(connection * n){
 	}
 }
 
-int server::handle_close(connection * n,  int reason){
+int server::handle_close(app_connection * n,  int reason){
 	
 	if(n->get_status() == kconnected){
 		n->set_status(kdisconnected);

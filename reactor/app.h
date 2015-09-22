@@ -12,28 +12,6 @@ enum{
 	ev_sys_close,            //关闭消息
 };
 
-/***********hd_app***************/
-struct hd_app{
-	
-	int type;     
-	int event;      
-	int length;     //消息长度 
-	char* content;  //消息
-		
-	union{
-		struct hd_tcp{
-			connection * n;
-		}tcp;
-		
-		struct hd_timer{
-			int interval;
-			void * ptr;
-		}timer;
-		
-		struct hd_app{
-		}app;
-	}u;
-};
 
 /***********app_connection***************/
 class app_connection: public connection{
@@ -47,6 +25,30 @@ protected:
 	int m_appid;	
 	auto_mutex m_mutex;	
 };
+
+/***********hd_app***************/
+struct app_hd{
+	
+	int type;     
+	int event;      
+	int length;     //消息长度 
+	char* content;  //消息
+		
+	union{
+		struct tcp_data{
+			app_connection * n;
+		}tcp;
+		
+		struct timer_date{
+			int interval;
+			void * ptr;
+		}timer;
+		
+		struct app_data{
+		}app;
+	}u;
+};
+
 
 /***********app_context***************/
 struct app_context{
@@ -72,10 +74,10 @@ public:
 class app{
 	
 public:
-	virtual int on_accept(connection * n) = 0;
-	virtual int on_recv(connection * n, char * data, int len) = 0;
-	virtual int on_close(connection * n, int reason) = 0;
-	virtual int on_connect(connection * n) = 0;
+	virtual int on_accept(app_connection * n) = 0;
+	virtual int on_recv(app_connection * n, char * data, int len) = 0;
+	virtual int on_close(app_connection * n, int reason) = 0;
+	virtual int on_connect(app_connection * n) = 0;
 	virtual int on_app(int event, char* content, int length) = 0;
 	virtual int on_timer(int event, int interval, void * ptr) = 0;
 	virtual int on_unpack(char * data, int len, int & packetlen, char *&packet) = 0;
@@ -85,7 +87,7 @@ public:
 	virtual ~app();
 	
 	int create(int appid, int msg_cout, const char * app_name);
-	int push(const hd_app & msg);
+	int push(const app_hd & msg);
 	const char * name();
 	int get_appid();	
 	int add_timer(int id, int interval, void * context = NULL);

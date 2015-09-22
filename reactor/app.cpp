@@ -84,7 +84,7 @@ int app::run(){
 			continue;
 		}
 		
-		hd_app * msg = (hd_app*)data;
+		app_hd * msg = (app_hd*)data;
 		if(msg->type == tcp_type){
 			switch(msg->event){
 				case ev_sys_recv:
@@ -148,17 +148,17 @@ int app::get_appid(){
 	return m_appid;
 }
 
-int  app::push(const hd_app & temp){
+int  app::push(const app_hd & temp){
 	
-	hd_app * msg = (hd_app*)malloc(sizeof(hd_app) + temp.length + 1);
+	app_hd * msg = (app_hd*)malloc(sizeof(app_hd) + temp.length + 1);
 	if(!msg){
-		error_log("malloc %d bytes fail, error(%d)\n", sizeof(hd_app) + temp.length + 1, errno);
+		error_log("malloc %d bytes fail, error(%d)\n", sizeof(app_hd) + temp.length + 1, errno);
 		return -1;
 	}
-	memcpy(msg, &temp, sizeof(hd_app));
+	memcpy(msg, &temp, sizeof(app_hd));
 	
 	if(temp.length){
-		msg->content = (char*)msg + sizeof(hd_app) ;
+		msg->content = (char*)msg + sizeof(app_hd) ;
 		memcpy(msg->content, temp.content, temp.length);
 		msg->content[temp.length] = 0;	
 	}

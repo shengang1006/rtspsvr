@@ -41,23 +41,23 @@ protected:
 	
 	int run();
 
-	int handle_recv(connection * n);
+	int handle_recv(app_connection * n);
 	
-	int handle_close(connection * n, int reason);
+	int handle_close(app_connection * n, int reason);
 	
 	int handle_accept();
 	
-	int handle_write(connection * n);
+	int handle_write(app_connection * n);
 	
 	int handle_timer(evtime * e);
 	
-	int loop_unpack(connection * n);
+	int loop_unpack(app_connection * n);
 	
-	int post_tcp_msg(connection * n, int event, void * content = NULL, int length = 0);
+	int post_tcp_msg(app_connection * n, int event, void * content = NULL, int length = 0);
 	
 	int post_timer_msg(evtime * e);
 
-	int handle_connect(connection * n);
+	int handle_connect(app_connection * n);
 	
 	int timer_keepalive(evtime * e);
 	
