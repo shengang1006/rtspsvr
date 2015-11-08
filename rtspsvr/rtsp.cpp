@@ -305,7 +305,7 @@ int rtsp::rtsp_msg(connection * n, char * data, int len){
 
 	int ret = ParseRTSPRequestString(requst, cmd, urlPreSuffix, urlSuffix, cseq, strSessionId);
 	if(ret < 0){
-		
+		return n->handleCmd_bad();
 	}
 
 	debug_log("[%u]parseRTSPRequestString:{%s}\n", pthread_self(), requst.c_str());
@@ -317,8 +317,7 @@ int rtsp::rtsp_msg(connection * n, char * data, int len){
 	if (requsetInsesseion){
 		clientSession = clientConnection->lookupRtspClientSession(strSessionId);
 		if(!clientSession){
-			clientConnection->handleCmd_sessionNotFound();
-			return -1;
+			return clientConnection->handleCmd_sessionNotFound();
 		}
 	}
 	 
