@@ -305,7 +305,7 @@ int rtsp::rtsp_msg(connection * n, char * data, int len){
 
 	int ret = ParseRTSPRequestString(requst, cmd, urlPreSuffix, urlSuffix, cseq, strSessionId);
 	if(ret < 0){
-		
+		return n->handleCmd_bad();
 	}
 
 	debug_log("[%u]parseRTSPRequestString:{%s}\n", pthread_self(), requst.c_str());
@@ -317,8 +317,7 @@ int rtsp::rtsp_msg(connection * n, char * data, int len){
 	if (requsetInsesseion){
 		clientSession = clientConnection->lookupRtspClientSession(strSessionId);
 		if(!clientSession){
-			clientConnection->handleCmd_sessionNotFound();
-			return -1;
+			return clientConnection->handleCmd_sessionNotFound();
 		}
 	}
 	 
@@ -779,9 +778,10 @@ int RtspClientConnection::handle_options(){
 		"RTSP/1.0 200 OK\r\n"
 		"CSeq: %s\r\n"
 		"%s"
-		"Public: OPTIONS, DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE, GET_PARAMETER, SET_PARAMETER\r\n\r\n",
+		"Public: %s\r\n\r\n",
 		getSeq().c_str(), 
-		dateStr().c_str());
+		dateStr().c_str(), 
+		"OPTIONS, DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE, GET_PARAMETER, SET_PARAMETER");
 
 	return post_send(str.c_str(), str.length());
 

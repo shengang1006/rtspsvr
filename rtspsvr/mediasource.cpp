@@ -263,7 +263,7 @@ int h264FileSource::parseMedia(){
 }
 
 int h264FileSource::getSdp(std::string & sdpLines){
-
+	
 	append(sdpLines,
 			"a=framerate:%.2f\r\n" //for mplayer need this
 			"a=rtpmap:%u H264/90000\r\n"
