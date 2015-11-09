@@ -305,7 +305,7 @@ int rtsp::rtsp_msg(connection * n, char * data, int len){
 
 	int ret = ParseRTSPRequestString(requst, cmd, urlPreSuffix, urlSuffix, cseq, strSessionId);
 	if(ret < 0){
-		return n->handleCmd_bad();
+		return clientConnection->handleCmd_bad();
 	}
 
 	debug_log("[%u]parseRTSPRequestString:{%s}\n", pthread_self(), requst.c_str());
